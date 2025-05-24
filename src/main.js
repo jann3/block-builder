@@ -17,7 +17,7 @@ document.body.appendChild(renderer.domElement);
 let controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
-const transformControls = new TransformControls(camera, renderer.domElement);
+let transformControls = new TransformControls(camera, renderer.domElement);
 scene.add(transformControls);
 
 transformControls.addEventListener('dragging-changed', function (event) {
@@ -72,16 +72,10 @@ scene.add(directionalLight);
 let ghostBlock = null;
 function createGhostBlock() {
   if (ghostBlock) scene.remove(ghostBlock);
-  ghostBlock = new THREE.Group();
-  for (let x = 0; x < blockSize; x++) {
-    for (let y = 0; y < blockSize; y++) {
-      for (let z = 0; z < blockSize; z++) {
-        const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMaterial(0.4, true));
-        cube.position.set(x, y, z);
-        ghostBlock.add(cube);
-      }
-    }
-  }
+  ghostBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(blockSize, blockSize, blockSize),
+    getMaterial(0.4, true)
+  );
   ghostBlock.visible = false;
   scene.add(ghostBlock);
 }
@@ -143,7 +137,13 @@ function updateGhostBlock(intersect) {
   basePos.y = snapToGrid(basePos.y);
   basePos.z = snapToGrid(basePos.z);
 
-  ghostBlock.position.set(basePos.x, basePos.y, basePos.z);
+  ghostBlock.geometry.dispose();
+  ghostBlock.geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
+  ghostBlock.position.set(
+    basePos.x + (blockSize - 1) / 2,
+    basePos.y + (blockSize - 1) / 2,
+    basePos.z + (blockSize - 1) / 2
+  );
   ghostBlock.visible = true;
 }
 
@@ -190,17 +190,17 @@ function moveBlockRelativeToCamera(key) {
   let move = new THREE.Vector3();
 
   switch (key) {
-    case 'q': // left and away
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
-      break;
-    case 'a': // left and toward
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
-      break;
-    case 'e': // right and away
+    case 'q':
       move.add(right.clone()).add(forward.clone());
       break;
-    case 'd': // right and toward
+    case 'a':
       move.add(right.clone()).add(forward.clone().multiplyScalar(-1));
+      break;
+    case 'e':
+      move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
+      break;
+    case 'd':
+      move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
       break;
   }
 
@@ -272,20 +272,30 @@ document.getElementById('materialSelector').addEventListener('change', (e) => {
 
 document.getElementById('isometricCamera').addEventListener('click', () => {
   isIsometric = !isIsometric;
+  const aspect = window.innerWidth / window.innerHeight;
   if (isIsometric) {
-    const aspect = window.innerWidth / window.innerHeight;
     camera = new THREE.OrthographicCamera(-10 * aspect, 10 * aspect, 10, -10, 0.1, 1000);
     camera.position.set(10, 10, 10);
     camera.lookAt(0, 0, 0);
   } else {
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
     camera.position.set(10, 10, 10);
     camera.lookAt(0, 0, 0);
   }
   controls.dispose();
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  transformControls.camera = camera;
+
+  scene.remove(transformControls);
+  transformControls = new TransformControls(camera, renderer.domElement);
+  transformControls.addEventListener('dragging-changed', function (event) {
+    controls.enabled = !event.value;
+  });
+  scene.add(transformControls);
+
+  if (selectedBlock) {
+    transformControls.attach(selectedBlock);
+  }
 });
 
 let mouseMoved = false;
@@ -366,14 +376,14 @@ animate();
 
 // Resize handler
 window.addEventListener('resize', () => {
+  const aspect = window.innerWidth / window.innerHeight;
   if (isIsometric) {
-    const aspect = window.innerWidth / window.innerHeight;
     camera.left = -10 * aspect;
     camera.right = 10 * aspect;
     camera.top = 10;
     camera.bottom = -10;
   } else {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.aspect = aspect;
   }
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
