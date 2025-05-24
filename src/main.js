@@ -4,6 +4,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 // Scene setup
 const scene = new THREE.Scene();
+let isIsometric = false;
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
@@ -28,6 +29,7 @@ const gridHelper = new THREE.GridHelper(100, 100);
 gridHelper.position.y = 0.5;
 gridHelper.position.z = 0.5;
 gridHelper.position.x = 0.5;
+gridHelper.frustumCulled = false;
 scene.add(gridHelper);
 
 const raycaster = new THREE.Raycaster();
@@ -189,16 +191,16 @@ function moveBlockRelativeToCamera(key) {
 
   switch (key) {
     case 'q': // left and away
-      move.add(right.clone()).add(forward.clone());
-      break;
-    case 'a': // left and toward
-      move.add(right.clone()).add(forward.clone().multiplyScalar(-1));
-      break;
-    case 'e': // right and away
       move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
       break;
-    case 'd': // right and toward
+    case 'a': // left and toward
       move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
+      break;
+    case 'e': // right and away
+      move.add(right.clone()).add(forward.clone());
+      break;
+    case 'd': // right and toward
+      move.add(right.clone()).add(forward.clone().multiplyScalar(-1));
       break;
   }
 
@@ -233,9 +235,11 @@ menu.innerHTML = `
     <option value="MeshLambertMaterial">Lambert</option>
     <option value="MeshPhongMaterial">Phong</option>
   </select>
-  <button id="isometricCamera">Isometric View</button>
+  <button id="isometricCamera">Toggle Isometric</button>
 `;
 document.body.appendChild(menu);
+
+// UI Event Listeners
 
 document.getElementById('placeTool').addEventListener('click', () => {
   currentMode = 'place';
@@ -267,16 +271,17 @@ document.getElementById('materialSelector').addEventListener('change', (e) => {
 });
 
 document.getElementById('isometricCamera').addEventListener('click', () => {
-  camera = new THREE.OrthographicCamera(
-    window.innerWidth / -20,
-    window.innerWidth / 20,
-    window.innerHeight / 20,
-    window.innerHeight / -20,
-    0.1,
-    1000
-  );
-  camera.position.set(10, 10, 10);
-  camera.lookAt(0, 0, 0);
+  isIsometric = !isIsometric;
+  if (isIsometric) {
+    const aspect = window.innerWidth / window.innerHeight;
+    camera = new THREE.OrthographicCamera(-10 * aspect, 10 * aspect, 10, -10, 0.1, 1000);
+    camera.position.set(10, 10, 10);
+    camera.lookAt(0, 0, 0);
+  } else {
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(10, 10, 10);
+    camera.lookAt(0, 0, 0);
+  }
   controls.dispose();
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -361,7 +366,15 @@ animate();
 
 // Resize handler
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  if (isIsometric) {
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.left = -10 * aspect;
+    camera.right = 10 * aspect;
+    camera.top = 10;
+    camera.bottom = -10;
+  } else {
+    camera.aspect = window.innerWidth / window.innerHeight;
+  }
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
