@@ -4,7 +4,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 // Scene setup
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
 
@@ -13,7 +13,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Controls
-const controls = new OrbitControls(camera, renderer.domElement);
+let controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 const transformControls = new TransformControls(camera, renderer.domElement);
@@ -39,15 +39,25 @@ let blockSize = 1;
 let selectedBlock = null;
 let currentMode = 'place'; // or 'select'
 
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5); // Adjusted for proper ground placement
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
 const planeHelper = new THREE.PlaneHelper(groundPlane, 100, 0xffff00);
 planeHelper.visible = false;
 scene.add(planeHelper);
 
-// Materials
-const blockMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+// Material Settings
+let currentColor = '#00ff00';
+let currentMaterialType = 'MeshStandardMaterial';
+
+function getMaterial(opacity = 1, transparent = false) {
+  const materialParams = {
+    color: currentColor,
+    opacity,
+    transparent
+  };
+  return new THREE[currentMaterialType](materialParams);
+}
+
 const selectedMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-const ghostMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, opacity: 0.4, transparent: true });
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -64,7 +74,7 @@ function createGhostBlock() {
   for (let x = 0; x < blockSize; x++) {
     for (let y = 0; y < blockSize; y++) {
       for (let z = 0; z < blockSize; z++) {
-        const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMaterial);
+        const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMaterial(0.4, true));
         cube.position.set(x, y, z);
         ghostBlock.add(cube);
       }
@@ -106,7 +116,7 @@ function placeBlock(intersect) {
       for (let z = 0; z < blockSize; z++) {
         const pos = new THREE.Vector3(basePos.x + x, basePos.y + y, basePos.z + z);
         if (isOverlapping(pos)) continue;
-        const block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), blockMaterial.clone());
+        const block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMaterial());
         block.position.copy(pos);
         block.userData.originalMaterial = block.material;
         scene.add(block);
@@ -172,23 +182,23 @@ function moveBlockRelativeToCamera(key) {
   camDir.y = 0;
   camDir.normalize();
 
-  const right = new THREE.Vector3().crossVectors(camDir, new THREE.Vector3(0, 1, 0)).normalize();
+  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir).normalize();
   const forward = camDir.clone();
 
   let move = new THREE.Vector3();
 
   switch (key) {
     case 'q': // left and away
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
-      break;
-    case 'a': // left and toward
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
-      break;
-    case 'e': // right and away
       move.add(right.clone()).add(forward.clone());
       break;
-    case 'd': // right and toward
+    case 'a': // left and toward
       move.add(right.clone()).add(forward.clone().multiplyScalar(-1));
+      break;
+    case 'e': // right and away
+      move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
+      break;
+    case 'd': // right and toward
+      move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
       break;
   }
 
@@ -216,6 +226,14 @@ menu.innerHTML = `
     <option value="2">2x2x2</option>
     <option value="3">3x3x3</option>
   </select>
+  <input type="color" id="colorPicker" value="#00ff00">
+  <select id="materialSelector">
+    <option value="MeshStandardMaterial">Standard</option>
+    <option value="MeshBasicMaterial">Basic</option>
+    <option value="MeshLambertMaterial">Lambert</option>
+    <option value="MeshPhongMaterial">Phong</option>
+  </select>
+  <button id="isometricCamera">Isometric View</button>
 `;
 document.body.appendChild(menu);
 
@@ -238,6 +256,33 @@ document.getElementById('blockSizeSelector').addEventListener('change', (event) 
   createGhostBlock();
 });
 
+document.getElementById('colorPicker').addEventListener('input', (e) => {
+  currentColor = e.target.value;
+  createGhostBlock();
+});
+
+document.getElementById('materialSelector').addEventListener('change', (e) => {
+  currentMaterialType = e.target.value;
+  createGhostBlock();
+});
+
+document.getElementById('isometricCamera').addEventListener('click', () => {
+  camera = new THREE.OrthographicCamera(
+    window.innerWidth / -20,
+    window.innerWidth / 20,
+    window.innerHeight / 20,
+    window.innerHeight / -20,
+    0.1,
+    1000
+  );
+  camera.position.set(10, 10, 10);
+  camera.lookAt(0, 0, 0);
+  controls.dispose();
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  transformControls.camera = camera;
+});
+
 let mouseMoved = false;
 
 renderer.domElement.addEventListener('mousedown', () => {
@@ -250,7 +295,7 @@ renderer.domElement.addEventListener('mousemove', (event) => {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(blocks.length ? blocks : [gridHelper], false);
+  const intersects = raycaster.intersectObjects([...blocks, gridHelper], false);
   if (currentMode === 'place' && intersects.length > 0) {
     updateGhostBlock(intersects[0]);
   } else {
@@ -259,13 +304,13 @@ renderer.domElement.addEventListener('mousemove', (event) => {
 });
 
 window.addEventListener('click', (event) => {
-  if (mouseMoved) return; // Prevent unintended placement after camera move
+  if (mouseMoved) return;
 
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(blocks.length ? blocks : [gridHelper], false);
+  const intersects = raycaster.intersectObjects([...blocks, gridHelper], false);
 
   if (intersects.length > 0) {
     const hit = intersects[0];
