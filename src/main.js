@@ -24,6 +24,14 @@ transformControls.addEventListener('dragging-changed', function (event) {
   controls.enabled = !event.value;
 });
 
+transformControls.addEventListener('objectChange', () => {
+  selectedBlocks.forEach(block => {
+    if (block.position.y < 1.0) {
+      block.position.y = 1.0;
+    }
+  });
+});
+
 // Grid and Helpers
 const gridHelper = new THREE.GridHelper(100, 100);
 gridHelper.position.y = 0.5;
@@ -38,7 +46,7 @@ const mouse = new THREE.Vector2();
 // Block storage
 const blocks = [];
 let blockSize = 1;
-let selectedBlock = null;
+let selectedBlocks = [];
 let currentMode = 'place'; // or 'select'
 
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
@@ -147,38 +155,44 @@ function updateGhostBlock(intersect) {
   ghostBlock.visible = true;
 }
 
-function selectBlock(object) {
-  if (selectedBlock) {
-    selectedBlock.material = selectedBlock.userData.originalMaterial;
+function selectBlock(object, additive = false) {
+  if (!additive) {
+    selectedBlocks.forEach(b => b.material = b.userData.originalMaterial);
+    selectedBlocks = [];
     transformControls.detach();
   }
-  selectedBlock = object;
-  if (selectedBlock) {
-    selectedBlock.material = selectedMaterial;
-    transformControls.attach(selectedBlock);
+
+  if (!selectedBlocks.includes(object)) {
+    selectedBlocks.push(object);
+    object.material = selectedMaterial;
+  }
+
+  if (selectedBlocks.length === 1) {
+    transformControls.attach(selectedBlocks[0]);
   }
 }
 
 function deleteSelectedBlock() {
-  if (selectedBlock) {
-    scene.remove(selectedBlock);
-    transformControls.detach();
-    const index = blocks.indexOf(selectedBlock);
+  selectedBlocks.forEach(block => {
+    scene.remove(block);
+    const index = blocks.indexOf(block);
     if (index !== -1) blocks.splice(index, 1);
-    selectedBlock = null;
-  }
+  });
+  transformControls.detach();
+  selectedBlocks = [];
 }
 
 function moveSelectedBlock(axis, direction) {
-  if (selectedBlock) {
-    const pos = selectedBlock.position.clone();
+  selectedBlocks.forEach(block => {
+    const pos = block.position.clone();
     pos[axis] = snapToGrid(pos[axis] + direction);
-    if (!isOverlapping(pos)) selectedBlock.position.copy(pos);
-  }
+    if (axis === 'y' && pos.y < 1.0) pos.y = 1.0;
+    if (!isOverlapping(pos)) block.position.copy(pos);
+  });
 }
 
 function moveBlockRelativeToCamera(key) {
-  if (!selectedBlock) return;
+  if (selectedBlocks.length === 0) return;
   const camDir = new THREE.Vector3();
   camera.getWorldDirection(camDir);
   camDir.y = 0;
@@ -190,27 +204,20 @@ function moveBlockRelativeToCamera(key) {
   let move = new THREE.Vector3();
 
   switch (key) {
-    case 'q':
-      move.add(right.clone()).add(forward.clone());
-      break;
-    case 'a':
-      move.add(right.clone()).add(forward.clone().multiplyScalar(-1));
-      break;
-    case 'e':
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone());
-      break;
-    case 'd':
-      move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1));
-      break;
+    case 'q': move.add(right.clone()).add(forward.clone()); break;
+    case 'a': move.add(right.clone()).add(forward.clone().multiplyScalar(-1)); break;
+    case 'e': move.add(right.clone().multiplyScalar(-1)).add(forward.clone()); break;
+    case 'd': move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1)); break;
   }
 
   move.normalize();
 
-  const newPos = selectedBlock.position.clone().add(move);
-  newPos.x = snapToGrid(newPos.x);
-  newPos.z = snapToGrid(newPos.z);
-
-  if (!isOverlapping(newPos)) selectedBlock.position.set(newPos.x, selectedBlock.position.y, newPos.z);
+  selectedBlocks.forEach(block => {
+    const newPos = block.position.clone().add(move);
+    newPos.x = snapToGrid(newPos.x);
+    newPos.z = snapToGrid(newPos.z);
+    if (!isOverlapping(newPos)) block.position.set(newPos.x, block.position.y, newPos.z);
+  });
 }
 
 // Tool mode toggle UI
@@ -244,10 +251,8 @@ document.body.appendChild(menu);
 document.getElementById('placeTool').addEventListener('click', () => {
   currentMode = 'place';
   transformControls.detach();
-  if (selectedBlock) {
-    selectedBlock.material = selectedBlock.userData.originalMaterial;
-    selectedBlock = null;
-  }
+  selectedBlocks.forEach(b => b.material = b.userData.originalMaterial);
+  selectedBlocks = [];
 });
 
 document.getElementById('selectTool').addEventListener('click', () => {
@@ -293,8 +298,8 @@ document.getElementById('isometricCamera').addEventListener('click', () => {
   });
   scene.add(transformControls);
 
-  if (selectedBlock) {
-    transformControls.attach(selectedBlock);
+  if (selectedBlocks.length === 1) {
+    transformControls.attach(selectedBlocks[0]);
   }
 });
 
@@ -331,7 +336,7 @@ window.addEventListener('click', (event) => {
     const hit = intersects[0];
     if (currentMode === 'select') {
       if (blocks.includes(hit.object)) {
-        selectBlock(hit.object);
+        selectBlock(hit.object, event.shiftKey);
       }
     } else {
       placeBlock(hit);
@@ -345,7 +350,7 @@ window.addEventListener('click', (event) => {
 });
 
 window.addEventListener('keydown', (event) => {
-  if (!selectedBlock) return;
+  if (selectedBlocks.length === 0) return;
   switch (event.key) {
     case 'Delete':
       deleteSelectedBlock();
