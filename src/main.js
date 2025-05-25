@@ -4,6 +4,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 // Scene setup
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd111e);
 let isIsometric = false;
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(10, 10, 10);
@@ -33,7 +34,7 @@ transformControls.addEventListener('objectChange', () => {
 });
 
 // Grid and Helpers
-const gridHelper = new THREE.GridHelper(100, 100);
+const gridHelper = new THREE.GridHelper(100, 100, 0x666688, 0x444466);
 gridHelper.position.y = 0.5;
 gridHelper.position.z = 0.5;
 gridHelper.position.x = 0.5;
@@ -55,7 +56,7 @@ planeHelper.visible = false;
 scene.add(planeHelper);
 
 // Material Settings
-let currentColor = '#00ff00';
+let currentColor = '#c6a6c9';
 let currentMaterialType = 'MeshStandardMaterial';
 
 function getMaterial(opacity = 1, transparent = false) {
@@ -67,7 +68,7 @@ function getMaterial(opacity = 1, transparent = false) {
   return new THREE[currentMaterialType](materialParams);
 }
 
-const selectedMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+const selectedMaterial = new THREE.MeshStandardMaterial({ color: 0xc92169 });
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -235,7 +236,7 @@ menu.innerHTML = `
     <option value="2">2x2x2</option>
     <option value="3">3x3x3</option>
   </select>
-  <input type="color" id="colorPicker" value="#00ff00">
+  <input type="color" id="colorPicker" value="#c6a6c9">
   <select id="materialSelector">
     <option value="MeshStandardMaterial">Standard</option>
     <option value="MeshBasicMaterial">Basic</option>
