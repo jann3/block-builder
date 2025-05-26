@@ -223,54 +223,96 @@ function moveBlockRelativeToCamera(key) {
   });
 }
 
-function exportBlocksAsOBJ() {
-  const exporter = new OBJExporter();
-
-  // Create a parent object to collect all block meshes
-  const exportGroup = new THREE.Group();
-  blocks.forEach(block => {
-    exportGroup.add(block.clone());
-  });
-
-  const result = exporter.parse(exportGroup);
-
-  const blob = new Blob([result], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'blocks.obj';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 function exportOptimisedOBJ() {
-  const exporter = new OBJExporter();
+  const voxelSize = 1;
+  const grid = new Map();
 
-  // Clone and collect all block geometries into world space
-  const geometries = blocks.map(block => {
-    const geom = block.geometry.clone();
-    geom.applyMatrix4(block.matrixWorld);
-    return geom;
+  // Build voxel occupancy grid
+  blocks.forEach(block => {
+    const key = `${block.position.x},${block.position.y},${block.position.z}`;
+    grid.set(key, true);
   });
 
-  // Merge all block geometries into one
-  const mergedGeometry = mergeGeometries(geometries, true);
-  const material = new THREE.MeshStandardMaterial({ color: currentColor }); // Default material
-  const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+  // Bounding box for the scene
+  const bounds = blocks.reduce((acc, block) => {
+    const { x, y, z } = block.position;
+    acc.min.x = Math.min(acc.min.x, x);
+    acc.min.y = Math.min(acc.min.y, y);
+    acc.min.z = Math.min(acc.min.z, z);
+    acc.max.x = Math.max(acc.max.x, x);
+    acc.max.y = Math.max(acc.max.y, y);
+    acc.max.z = Math.max(acc.max.z, z);
+    return acc;
+  }, {
+    min: { x: Infinity, y: Infinity, z: Infinity },
+    max: { x: -Infinity, y: -Infinity, z: -Infinity }
+  });
 
-  const result = exporter.parse(mergedMesh);
+  function isSolid(x, y, z) {
+    return grid.has(`${x},${y},${z}`);
+  }
 
-  const blob = new Blob([result], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
+  const vertices = [];
+  const faces = [];
+  const vertexMap = new Map();
+  let vertexCount = 1;
 
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'blocks_optimised.obj';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  // Helper to add a vertex and return its index
+  function addVertex(v) {
+    const key = v.join(',');
+    if (!vertexMap.has(key)) {
+      vertexMap.set(key, vertexCount++);
+      vertices.push(`v ${v[0]} ${v[1]} ${v[2]}`);
+    }
+    return vertexMap.get(key);
+  }
+
+  // Face directions
+  const dirs = [
+    { d: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
+    { d: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
+    { d: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+    { d: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+    { d: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
+    { d: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
+  ];
+
+  // Iterate through every voxel face
+  for (let x = bounds.min.x; x <= bounds.max.x; x++) {
+    for (let y = bounds.min.y; y <= bounds.max.y; y++) {
+      for (let z = bounds.min.z; z <= bounds.max.z; z++) {
+        if (!isSolid(x, y, z)) continue;
+
+        for (let i = 0; i < dirs.length; i++) {
+          const { d, u, v } = dirs[i];
+          const nx = x + d[0], ny = y + d[1], nz = z + d[2];
+          if (isSolid(nx, ny, nz)) continue; // skip internal face
+
+          // Create quad face
+          const base = [x, y, z];
+          const corners = [
+            [0, 0], [1, 0], [1, 1], [0, 1]
+          ].map(([a, b]) =>
+            base.map((c, idx) =>
+              c + d[idx] * 0.5 +
+              u[idx] * (a - 0.5) +
+              v[idx] * (b - 0.5)
+            )
+          );
+
+          const indices = corners.map(addVertex);
+          faces.push(`f ${indices[0]} ${indices[1]} ${indices[2]} ${indices[3]}`);
+        }
+      }
+    }
+  }
+
+  const output = [...vertices, ...faces].join('\n');
+  const blob = new Blob([output], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'optimised_model.obj';
+  a.click();
 }
 
 // Tool mode toggle UI
