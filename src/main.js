@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
+import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -221,6 +223,56 @@ function moveBlockRelativeToCamera(key) {
   });
 }
 
+function exportBlocksAsOBJ() {
+  const exporter = new OBJExporter();
+
+  // Create a parent object to collect all block meshes
+  const exportGroup = new THREE.Group();
+  blocks.forEach(block => {
+    exportGroup.add(block.clone());
+  });
+
+  const result = exporter.parse(exportGroup);
+
+  const blob = new Blob([result], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'blocks.obj';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportOptimisedOBJ() {
+  const exporter = new OBJExporter();
+
+  // Clone and collect all block geometries into world space
+  const geometries = blocks.map(block => {
+    const geom = block.geometry.clone();
+    geom.applyMatrix4(block.matrixWorld);
+    return geom;
+  });
+
+  // Merge all block geometries into one
+  const mergedGeometry = mergeGeometries(geometries, true);
+  const material = new THREE.MeshStandardMaterial({ color: currentColor }); // Default material
+  const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+
+  const result = exporter.parse(mergedMesh);
+
+  const blob = new Blob([result], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'blocks_optimised.obj';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // Tool mode toggle UI
 const menu = document.createElement('div');
 menu.style.position = 'absolute';
@@ -244,6 +296,8 @@ menu.innerHTML = `
     <option value="MeshPhongMaterial">Phong</option>
   </select>
   <button id="isometricCamera">Toggle Isometric</button>
+  <button id="exportFullObj">Export OBJ</button>
+  <button id="exportOptObj">Export optmized OBJ</button>
 `;
 document.body.appendChild(menu);
 
@@ -274,6 +328,14 @@ document.getElementById('colorPicker').addEventListener('input', (e) => {
 document.getElementById('materialSelector').addEventListener('change', (e) => {
   currentMaterialType = e.target.value;
   createGhostBlock();
+});
+
+document.getElementById('exportFullObj').addEventListener('click', () => {
+  exportBlocksAsOBJ();
+});
+
+document.getElementById('exportOptObj').addEventListener('click', () => {
+  exportOptimisedOBJ();
 });
 
 document.getElementById('isometricCamera').addEventListener('click', () => {
