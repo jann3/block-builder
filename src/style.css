@@ -75,3 +75,57 @@ body {
 #ui input[type="checkbox"]:checked::after {
     border-color: #fff;
 }
+
+/* ---- Hint popovers (shared) ---- */
+.hint-popover {
+    position: fixed;
+    transform: translateX(-50%);
+    background: #2e2e30;
+    color: #ffffff;
+    border: 1px solid #a78bca;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    box-shadow:
+        0 0 22px 6px rgba(255, 51, 102, 0.2),
+        0 2px 10px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 200;
+    display: none;
+}
+
+.hint-popover.visible {
+    display: block;
+    animation: hint-in 0.25s ease forwards;
+}
+
+.hint-popover.hiding {
+    display: block;
+    animation: hint-out 0.2s ease forwards;
+}
+
+@keyframes hint-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes hint-out {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to   { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+}
+
+/* Rotated square arrow pointing back up at the Select button */
+.hint-popover::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 10px;
+    height: 10px;
+    background: #2e2e30;
+    border-left: 1px solid #a78bca;
+    border-top: 1px solid #a78bca;
+}

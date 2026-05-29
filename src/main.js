@@ -84,7 +84,7 @@ const gridMaterial = new THREE.ShaderMaterial({
       float line = step(modCoord.x, uLineWidth) + step(spacing - modCoord.x, uLineWidth)
                  + step(modCoord.y, uLineWidth) + step(spacing - modCoord.y, uLineWidth);
       float dist = distance(vWorldPosition.xz, uCenter.xz);
-      float fade = 1.0 - smoothstep(uFadeDistance * 0.6, uFadeDistance, dist);
+      float fade = 1.0 - smoothstep(uFadeDistance * 0.2, uFadeDistance, dist);
       float alpha = clamp(line * fade, 0.0, 1.0);
       if (alpha < 0.01) discard;
       gl_FragColor = vec4(0.4, 0.4, 0.6, alpha);
@@ -482,6 +482,10 @@ renderer.domElement.addEventListener('mousemove', e => {
   }
 });
 
+renderer.domElement.addEventListener('mouseleave', () => {
+  ghost.visible = false;
+});
+
 renderer.domElement.addEventListener('click', e => {
   if (mouseMoved) return;
 
@@ -490,6 +494,8 @@ renderer.domElement.addEventListener('click', e => {
 
   if (mode === 'select' && hits.length) {
     selectBlock(hits[0].object, e.shiftKey);
+    selectClickCount++;
+    if (selectClickCount % 3 === 0) showHint(deleteHint);
   }
 
   if (mode === 'place') placeBlock(hits[0]);
@@ -591,9 +597,51 @@ document.addEventListener('drop', e => {
   reader.readAsText(file);
 });
 
+// ---------------- Hint Popovers ----------------
+function makeHint(text) {
+  const el = document.createElement('div');
+  el.className = 'hint-popover';
+  el.textContent = text;
+  document.body.appendChild(el);
+  return el;
+}
+
+function showHint(el) {
+  const rect = document.getElementById('select').getBoundingClientRect();
+  el.style.left = `${rect.left + rect.width / 2}px`;
+  el.style.top  = `${rect.bottom + 10}px`;
+  el.classList.remove('hiding');
+  el.classList.add('visible');
+  setTimeout(() => {
+    el.classList.remove('visible');
+    el.classList.add('hiding');
+    el.addEventListener('animationend', () => el.classList.remove('hiding'), { once: true });
+  }, 5000);
+}
+
+const ctrlAHint  = makeHint('CTRL+A to Select All');
+const deleteHint = makeHint('Press Delete to remove Selected blocks');
+
+let deletedCount    = 0;
+let ctrlAHintShown  = false;
+let selectClickCount = 0;
+
 const keysHeld = new Set();
 
 window.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'a') {
+    e.preventDefault();
+    setMode('select');
+    ghost.visible = false;
+    clearSelection();
+    blocks.forEach(b => {
+      selectedBlocks.add(b);
+      b.material = selectedMaterial;
+    });
+    transformControls.detach();
+    return;
+  }
+
   keysHeld.add(e.key);
   if (e.key === ' ') {
     e.preventDefault();
@@ -607,12 +655,18 @@ window.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'Delete' && selectedBlocks.size > 0) {
+    deletedCount += selectedBlocks.size;
+    selectClickCount = 0;
     selectedBlocks.forEach(b => {
       scene.remove(b);
       blocks.splice(blocks.indexOf(b), 1);
     });
     hoveredBlock = null;
     clearSelection();
+    if (!ctrlAHintShown && deletedCount > 4 && blocks.length > 3) {
+      ctrlAHintShown = true;
+      showHint(ctrlAHint);
+    }
   }
 });
 
