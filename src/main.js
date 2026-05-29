@@ -506,10 +506,10 @@ ui.style.gap = '6px';
 ui.innerHTML = `
   <button id="place">Place</button>
   <button id="select">Select</button>
-  <button id="export">Export OBJ</button>
-  <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
   <button id="import">Import OBJ</button>
   <input type="file" id="import-file" accept=".obj" style="display:none">
+  <button id="export">Export OBJ</button>
+  <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
 `;
 document.body.appendChild(ui);
 
