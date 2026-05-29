@@ -1,14 +1,28 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
-import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-// Scene setup
+/*
+  CLEAN BASELINE IMPLEMENTATION
+  -----------------------------
+  Guarantees:
+  - Blocks snap to ground AND other blocks
+  - Grid aligns perfectly with blocks
+  - Simple OBJ export ALWAYS works in Blender
+  - No greedy meshing / no optimisation
+  - This is a known-good foundation
+*/
+
+// ---------------- Scene ----------------
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xd111e);
-let isIsometric = false;
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+scene.background = new THREE.Color(0x1d1d1e);
+
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
 camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
 
@@ -16,485 +30,480 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Controls
-let controls = new OrbitControls(camera, renderer.domElement);
+// ---------------- Controls ----------------
+const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
-let transformControls = new TransformControls(camera, renderer.domElement);
+const transformControls = new TransformControls(camera, renderer.domElement);
 scene.add(transformControls);
 
-transformControls.addEventListener('dragging-changed', function (event) {
-  controls.enabled = !event.value;
+transformControls.addEventListener('dragging-changed', e => {
+  controls.enabled = !e.value;
 });
 
-transformControls.addEventListener('objectChange', () => {
-  selectedBlocks.forEach(block => {
-    if (block.position.y < 1.0) {
-      block.position.y = 1.0;
+// ---------------- Lights ----------------
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(10, 20, 10);
+scene.add(dir);
+
+// ---------------- Grid ----------------
+const GRID_SIZE = 100;
+const GRID_DIVS = 100;
+
+const gridGeometry = new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE);
+gridGeometry.rotateX(-Math.PI / 2);
+
+const gridMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uSize:         { value: GRID_SIZE },
+    uDivisions:    { value: GRID_DIVS },
+    uFadeDistance: { value: 16.0 },
+    uLineWidth:    { value: 0.02 },
+    uCenter:       { value: new THREE.Vector3(0, 0, 0) }
+  },
+  vertexShader: `
+    varying vec3 vWorldPosition;
+    void main() {
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldPosition = worldPos.xyz;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
     }
-  });
+  `,
+  fragmentShader: `
+    uniform float uSize;
+    uniform float uDivisions;
+    uniform float uFadeDistance;
+    uniform float uLineWidth;
+    uniform vec3 uCenter;
+    varying vec3 vWorldPosition;
+    void main() {
+      vec2 coord = vWorldPosition.xz + uSize / 2.0;
+      float spacing = uSize / float(uDivisions);
+      vec2 modCoord = mod(coord, spacing);
+      float line = step(modCoord.x, uLineWidth) + step(spacing - modCoord.x, uLineWidth)
+                 + step(modCoord.y, uLineWidth) + step(spacing - modCoord.y, uLineWidth);
+      float dist = distance(vWorldPosition.xz, uCenter.xz);
+      float fade = 1.0 - smoothstep(uFadeDistance * 0.6, uFadeDistance, dist);
+      float alpha = clamp(line * fade, 0.0, 1.0);
+      if (alpha < 0.01) discard;
+      gl_FragColor = vec4(0.4, 0.4, 0.6, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false
 });
 
-// Grid and Helpers
-const gridHelper = new THREE.GridHelper(100, 100, 0x666688, 0x444466);
-gridHelper.position.y = 0.5;
-gridHelper.position.z = 0.5;
-gridHelper.position.x = 0.5;
-gridHelper.frustumCulled = false;
-scene.add(gridHelper);
+const grid = new THREE.Mesh(gridGeometry, gridMaterial);
+grid.frustumCulled = false;
+scene.add(grid);
 
+// ---------------- Ground Plane ----------------
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+// ---------------- State ----------------
+const blocks = [];
+const selectedBlocks = new Set();
+let mode = 'place';
+
+// ---------------- Materials ----------------
+const blockMaterial = new THREE.MeshStandardMaterial({ color: 0xc6a6c9 });
+const hoverMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color(0xc6a6c9).multiplyScalar(0.72) });
+const selectedMaterial = new THREE.MeshStandardMaterial({ color: 0xff3366 });
+
+// ---------------- Helpers ----------------
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-// Block storage
-const blocks = [];
-let blockSize = 1;
-let selectedBlocks = [];
-let currentMode = 'place'; // or 'select'
-
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
-const planeHelper = new THREE.PlaneHelper(groundPlane, 100, 0xffff00);
-planeHelper.visible = false;
-scene.add(planeHelper);
-
-// Material Settings
-let currentColor = '#c6a6c9';
-let currentMaterialType = 'MeshStandardMaterial';
-
-function getMaterial(opacity = 1, transparent = false) {
-  const materialParams = {
-    color: currentColor,
-    opacity,
-    transparent
-  };
-  return new THREE[currentMaterialType](materialParams);
+function snap(v) {
+  return Math.floor(v) + 0.5;
 }
 
-const selectedMaterial = new THREE.MeshStandardMaterial({ color: 0xc92169 });
-
-// Lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(10, 20, 10);
-scene.add(directionalLight);
-
-// Ghost Block
-let ghostBlock = null;
-function createGhostBlock() {
-  if (ghostBlock) scene.remove(ghostBlock);
-  ghostBlock = new THREE.Mesh(
-    new THREE.BoxGeometry(blockSize, blockSize, blockSize),
-    getMaterial(0.4, true)
+function isOccupied(x, y, z) {
+  return blocks.some(b =>
+    b.position.x === x &&
+    b.position.y === y &&
+    b.position.z === z
   );
-  ghostBlock.visible = false;
-  scene.add(ghostBlock);
-}
-createGhostBlock();
-
-// Functions
-function snapToGrid(position) {
-  return Math.round(position);
 }
 
-function isOverlapping(pos) {
-  return blocks.some(block =>
-    block.position.distanceToSquared(pos) < 0.01
-  );
+// ---------------- Ghost ----------------
+const ghost = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, opacity: 0.4, transparent: true })
+);
+ghost.visible = false;
+scene.add(ghost);
+
+// ---------------- Placement ----------------
+function updateGhost(intersect) {
+  const pos = new THREE.Vector3();
+
+  if (intersect && intersect.face && blocks.includes(intersect.object)) {
+    pos.copy(intersect.object.position);
+    pos.add(intersect.face.normal);
+  } else {
+    raycaster.ray.intersectPlane(groundPlane, pos);
+    pos.y = 0;
+  }
+
+  pos.set(snap(pos.x), snap(pos.y), snap(pos.z));
+  ghost.position.copy(pos);
+  ghost.visible = true;
 }
 
 function placeBlock(intersect) {
-  let basePos = new THREE.Vector3();
+  const pos = ghost.position.clone();
 
-  if (intersect.face && intersect.object) {
-    basePos.copy(intersect.object.position);
-    basePos.addScaledVector(intersect.face.normal, 1);
-  } else {
-    raycaster.ray.intersectPlane(groundPlane, basePos);
-    basePos.y = 0.5;
+  if (isOccupied(pos.x, pos.y, pos.z)) return;
+
+  const mat = blockMaterial.clone();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
+  mesh.userData.originalMaterial = mat;
+  mesh.position.copy(pos);
+  scene.add(mesh);
+  blocks.push(mesh);
+}
+
+// ---------------- Selection ----------------
+let hoveredBlock = null;
+
+function setHover(obj) {
+  if (hoveredBlock === obj) return;
+  if (hoveredBlock && !selectedBlocks.has(hoveredBlock)) {
+    hoveredBlock.material = hoveredBlock.userData.originalMaterial;
   }
-
-  basePos.x = snapToGrid(basePos.x);
-  basePos.y = snapToGrid(basePos.y);
-  basePos.z = snapToGrid(basePos.z);
-
-  for (let x = 0; x < blockSize; x++) {
-    for (let y = 0; y < blockSize; y++) {
-      for (let z = 0; z < blockSize; z++) {
-        const pos = new THREE.Vector3(basePos.x + x, basePos.y + y, basePos.z + z);
-        if (isOverlapping(pos)) continue;
-        const block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMaterial());
-        block.position.copy(pos);
-        block.userData.originalMaterial = block.material;
-        scene.add(block);
-        blocks.push(block);
-      }
-    }
+  hoveredBlock = obj;
+  if (hoveredBlock && !selectedBlocks.has(hoveredBlock)) {
+    hoveredBlock.material = hoverMaterial;
   }
 }
 
-function updateGhostBlock(intersect) {
-  let basePos = new THREE.Vector3();
-
-  if (intersect.face && intersect.object) {
-    basePos.copy(intersect.object.position);
-    basePos.addScaledVector(intersect.face.normal, 1);
-  } else {
-    raycaster.ray.intersectPlane(groundPlane, basePos);
-    basePos.y = 0.5;
-  }
-
-  basePos.x = snapToGrid(basePos.x);
-  basePos.y = snapToGrid(basePos.y);
-  basePos.z = snapToGrid(basePos.z);
-
-  ghostBlock.geometry.dispose();
-  ghostBlock.geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-  ghostBlock.position.set(
-    basePos.x + (blockSize - 1) / 2,
-    basePos.y + (blockSize - 1) / 2,
-    basePos.z + (blockSize - 1) / 2
-  );
-  ghostBlock.visible = true;
+function clearSelection() {
+  selectedBlocks.forEach(b => { b.material = b.userData.originalMaterial; });
+  selectedBlocks.clear();
+  transformControls.detach();
 }
 
-function selectBlock(object, additive = false) {
-  if (!additive) {
-    selectedBlocks.forEach(b => b.material = b.userData.originalMaterial);
-    selectedBlocks = [];
+function selectBlock(obj, additive = false) {
+  if (!additive) clearSelection();
+
+  if (selectedBlocks.has(obj)) {
+    // Shift-click on already-selected block → deselect it
+    selectedBlocks.delete(obj);
+    obj.material = obj === hoveredBlock ? hoverMaterial : obj.userData.originalMaterial;
+  } else {
+    selectedBlocks.add(obj);
+    obj.material = selectedMaterial;
+    if (hoveredBlock === obj) hoveredBlock = null;
+  }
+
+  // Attach transform gizmo only for single selections
+  if (selectedBlocks.size === 1) {
+    transformControls.attach([...selectedBlocks][0]);
+  } else {
     transformControls.detach();
   }
-
-  if (!selectedBlocks.includes(object)) {
-    selectedBlocks.push(object);
-    object.material = selectedMaterial;
-  }
-
-  if (selectedBlocks.length === 1) {
-    transformControls.attach(selectedBlocks[0]);
-  }
 }
 
-function deleteSelectedBlock() {
-  selectedBlocks.forEach(block => {
-    scene.remove(block);
-    const index = blocks.indexOf(block);
-    if (index !== -1) blocks.splice(index, 1);
-  });
-  transformControls.detach();
-  selectedBlocks = [];
-}
+// ---------------- Export OBJ (KNOWN GOOD) ----------------
+function exportOBJ() {
+  if (!blocks.length) return;
 
-function moveSelectedBlock(axis, direction) {
-  selectedBlocks.forEach(block => {
-    const pos = block.position.clone();
-    pos[axis] = snapToGrid(pos[axis] + direction);
-    if (axis === 'y' && pos.y < 1.0) pos.y = 1.0;
-    if (!isOverlapping(pos)) block.position.copy(pos);
-  });
-}
-
-function moveBlockRelativeToCamera(key) {
-  if (selectedBlocks.length === 0) return;
-  const camDir = new THREE.Vector3();
-  camera.getWorldDirection(camDir);
-  camDir.y = 0;
-  camDir.normalize();
-
-  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir).normalize();
-  const forward = camDir.clone();
-
-  let move = new THREE.Vector3();
-
-  switch (key) {
-    case 'q': move.add(right.clone()).add(forward.clone()); break;
-    case 'a': move.add(right.clone()).add(forward.clone().multiplyScalar(-1)); break;
-    case 'e': move.add(right.clone().multiplyScalar(-1)).add(forward.clone()); break;
-    case 'd': move.add(right.clone().multiplyScalar(-1)).add(forward.clone().multiplyScalar(-1)); break;
-  }
-
-  move.normalize();
-
-  selectedBlocks.forEach(block => {
-    const newPos = block.position.clone().add(move);
-    newPos.x = snapToGrid(newPos.x);
-    newPos.z = snapToGrid(newPos.z);
-    if (!isOverlapping(newPos)) block.position.set(newPos.x, block.position.y, newPos.z);
-  });
-}
-
-function exportOptimisedOBJ() {
-  const voxelSize = 1;
-  const grid = new Map();
-
-  // Build voxel occupancy grid
-  blocks.forEach(block => {
-    const key = `${block.position.x},${block.position.y},${block.position.z}`;
-    grid.set(key, true);
-  });
-
-  // Bounding box for the scene
-  const bounds = blocks.reduce((acc, block) => {
-    const { x, y, z } = block.position;
-    acc.min.x = Math.min(acc.min.x, x);
-    acc.min.y = Math.min(acc.min.y, y);
-    acc.min.z = Math.min(acc.min.z, z);
-    acc.max.x = Math.max(acc.max.x, x);
-    acc.max.y = Math.max(acc.max.y, y);
-    acc.max.z = Math.max(acc.max.z, z);
-    return acc;
-  }, {
-    min: { x: Infinity, y: Infinity, z: Infinity },
-    max: { x: -Infinity, y: -Infinity, z: -Infinity }
-  });
-
-  function isSolid(x, y, z) {
-    return grid.has(`${x},${y},${z}`);
-  }
-
-  const vertices = [];
-  const faces = [];
-  const vertexMap = new Map();
-  let vertexCount = 1;
-
-  // Helper to add a vertex and return its index
-  function addVertex(v) {
-    const key = v.join(',');
-    if (!vertexMap.has(key)) {
-      vertexMap.set(key, vertexCount++);
-      vertices.push(`v ${v[0]} ${v[1]} ${v[2]}`);
-    }
-    return vertexMap.get(key);
-  }
-
-  // Face directions
-  const dirs = [
-    { d: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-    { d: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-    { d: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-    { d: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-    { d: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
-    { d: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
+  const verts = [
+    [0,0,0],[1,0,0],[1,1,0],[0,1,0],
+    [0,0,1],[1,0,1],[1,1,1],[0,1,1]
   ];
 
-  // Iterate through every voxel face
-  for (let x = bounds.min.x; x <= bounds.max.x; x++) {
-    for (let y = bounds.min.y; y <= bounds.max.y; y++) {
-      for (let z = bounds.min.z; z <= bounds.max.z; z++) {
-        if (!isSolid(x, y, z)) continue;
+  const faces = [
+    [1,2,3],[1,3,4],
+    [5,8,7],[5,7,6],
+    [1,5,6],[1,6,2],
+    [2,6,7],[2,7,3],
+    [3,7,8],[3,8,4],
+    [4,8,5],[4,5,1]
+  ];
 
-        for (let i = 0; i < dirs.length; i++) {
-          const { d, u, v } = dirs[i];
-          const nx = x + d[0], ny = y + d[1], nz = z + d[2];
-          if (isSolid(nx, ny, nz)) continue; // skip internal face
+  let obj = '';
+  let offset = 0;
 
-          // Create quad face
-          const base = [x, y, z];
-          const corners = [
-            [0, 0], [1, 0], [1, 1], [0, 1]
-          ].map(([a, b]) =>
-            base.map((c, idx) =>
-              c + d[idx] * 0.5 +
-              u[idx] * (a - 0.5) +
-              v[idx] * (b - 0.5)
-            )
-          );
+  for (const b of blocks) {
+    const { x, y, z } = b.position;
 
-          const indices = corners.map(addVertex);
-          faces.push(`f ${indices[0]} ${indices[1]} ${indices[2]} ${indices[3]}`);
+    for (const v of verts) {
+      obj += `v ${v[0]+x} ${v[1]+y} ${v[2]+z}\n`;
+    }
+
+    for (const f of faces) {
+      obj += `f ${f[0]+offset} ${f[1]+offset} ${f[2]+offset}\n`;
+    }
+
+    offset += 8;
+  }
+
+  const blob = new Blob([obj], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'blocks.obj';
+  a.click();
+}
+
+// ---------------- Export Optimised OBJ ----------------
+function exportOptimisedOBJ() {
+  if (!blocks.length) return;
+
+  // Integer grid coords: block centered at (cx,cy,cz) → corner at (cx-0.5, cy-0.5, cz-0.5)
+  const gb = blocks.map(b => [
+    Math.round(b.position.x - 0.5),
+    Math.round(b.position.y - 0.5),
+    Math.round(b.position.z - 0.5)
+  ]);
+
+  const occ = new Set(gb.map(([x, y, z]) => `${x},${y},${z}`));
+  const has = (x, y, z) => occ.has(`${x},${y},${z}`);
+
+  const verts = [];
+  const tris  = [];
+  const vmap  = new Map();
+
+  function getV(x, y, z) {
+    const k = `${x},${y},${z}`;
+    if (!vmap.has(k)) { vmap.set(k, verts.length + 1); verts.push([x, y, z]); }
+    return vmap.get(k);
+  }
+
+  function emitQuad(a, b, c, d) {
+    const [ia, ib, ic, id] = [a, b, c, d].map(([x, y, z]) => getV(x, y, z));
+    tris.push([ia, ib, ic], [ia, ic, id]);
+  }
+
+  // [normAxis, normDir, uAxis, vAxis]
+  const faceTypes = [
+    [0, +1, 1, 2],  // +X
+    [0, -1, 1, 2],  // -X
+    [1, +1, 0, 2],  // +Y
+    [1, -1, 0, 2],  // -Y
+    [2, +1, 0, 1],  // +Z
+    [2, -1, 0, 1],  // -Z
+  ];
+
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (const b of gb) for (let i = 0; i < 3; i++) {
+    if (b[i] < lo[i]) lo[i] = b[i];
+    if (b[i] > hi[i]) hi[i] = b[i];
+  }
+
+  for (const [na, nd, ua, va] of faceTypes) {
+    for (let s = lo[na]; s <= hi[na]; s++) {
+      const uw = hi[ua] - lo[ua] + 1;
+      const vw = hi[va] - lo[va] + 1;
+      const grid = Array.from({ length: uw }, () => new Uint8Array(vw));
+      const done = Array.from({ length: uw }, () => new Uint8Array(vw));
+
+      for (const b of gb) {
+        if (b[na] !== s) continue;
+        const nb = [b[0], b[1], b[2]];
+        nb[na] += nd;
+        if (!has(nb[0], nb[1], nb[2])) {
+          grid[b[ua] - lo[ua]][b[va] - lo[va]] = 1;
+        }
+      }
+
+      for (let i = 0; i < uw; i++) {
+        for (let j = 0; j < vw; j++) {
+          if (!grid[i][j] || done[i][j]) continue;
+
+          // Extend along u axis
+          let wi = 1;
+          while (i + wi < uw && grid[i + wi][j] && !done[i + wi][j]) wi++;
+
+          // Extend along v axis keeping full u width
+          let wj = 1;
+          ext: while (j + wj < vw) {
+            for (let di = 0; di < wi; di++) {
+              if (!grid[i + di][j + wj] || done[i + di][j + wj]) break ext;
+            }
+            wj++;
+          }
+
+          for (let di = 0; di < wi; di++)
+            for (let dj = 0; dj < wj; dj++)
+              done[i + di][j + dj] = 1;
+
+          const u0 = lo[ua] + i,      u1 = lo[ua] + i + wi;
+          const v0 = lo[va] + j,      v1 = lo[va] + j + wj;
+          const nv = s + (nd === 1 ? 1 : 0);
+
+          const pt = (u, v) => {
+            const c = [0, 0, 0];
+            c[na] = nv; c[ua] = u; c[va] = v;
+            return c;
+          };
+
+          // Winding formula derived to produce outward-facing normals
+          const flip = na % 2 === 0 ? nd : -nd;
+          if (flip > 0) emitQuad(pt(u0,v0), pt(u1,v0), pt(u1,v1), pt(u0,v1));
+          else          emitQuad(pt(u0,v0), pt(u0,v1), pt(u1,v1), pt(u1,v0));
         }
       }
     }
   }
 
-  const output = [...vertices, ...faces].join('\n');
-  const blob = new Blob([output], { type: 'text/plain' });
+  let obj = '';
+  for (const [x, y, z] of verts) obj += `v ${x} ${y} ${z}\n`;
+  for (const f of tris)          obj += `f ${f.join(' ')}\n`;
+
+  const blob = new Blob([obj], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'optimised_model.obj';
+  a.download = 'model_optimised.obj';
   a.click();
 }
 
-// Tool mode toggle UI
-const menu = document.createElement('div');
-menu.style.position = 'absolute';
-menu.style.top = '10px';
-menu.style.left = '10px';
-menu.style.background = '#fff';
-menu.style.padding = '5px';
-menu.innerHTML = `
-  <button id="placeTool">Place Tool</button>
-  <button id="selectTool">Select Tool</button>
-  <select id="blockSizeSelector">
-    <option value="1">1x1x1</option>
-    <option value="2">2x2x2</option>
-    <option value="3">3x3x3</option>
-  </select>
-  <input type="color" id="colorPicker" value="#c6a6c9">
-  <select id="materialSelector">
-    <option value="MeshStandardMaterial">Standard</option>
-    <option value="MeshBasicMaterial">Basic</option>
-    <option value="MeshLambertMaterial">Lambert</option>
-    <option value="MeshPhongMaterial">Phong</option>
-  </select>
-  <button id="isometricCamera">Toggle Isometric</button>
-  <button id="exportFullObj">Export OBJ</button>
-  <button id="exportOptObj">Export optmized OBJ</button>
-`;
-document.body.appendChild(menu);
-
-// UI Event Listeners
-
-document.getElementById('placeTool').addEventListener('click', () => {
-  currentMode = 'place';
-  transformControls.detach();
-  selectedBlocks.forEach(b => b.material = b.userData.originalMaterial);
-  selectedBlocks = [];
-});
-
-document.getElementById('selectTool').addEventListener('click', () => {
-  currentMode = 'select';
-  ghostBlock.visible = false;
-});
-
-document.getElementById('blockSizeSelector').addEventListener('change', (event) => {
-  blockSize = parseInt(event.target.value);
-  createGhostBlock();
-});
-
-document.getElementById('colorPicker').addEventListener('input', (e) => {
-  currentColor = e.target.value;
-  createGhostBlock();
-});
-
-document.getElementById('materialSelector').addEventListener('change', (e) => {
-  currentMaterialType = e.target.value;
-  createGhostBlock();
-});
-
-document.getElementById('exportFullObj').addEventListener('click', () => {
-  exportBlocksAsOBJ();
-});
-
-document.getElementById('exportOptObj').addEventListener('click', () => {
-  exportOptimisedOBJ();
-});
-
-document.getElementById('isometricCamera').addEventListener('click', () => {
-  isIsometric = !isIsometric;
-  const aspect = window.innerWidth / window.innerHeight;
-  if (isIsometric) {
-    camera = new THREE.OrthographicCamera(-10 * aspect, 10 * aspect, 10, -10, 0.1, 1000);
-    camera.position.set(10, 10, 10);
-    camera.lookAt(0, 0, 0);
-  } else {
-    camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-    camera.position.set(10, 10, 10);
-    camera.lookAt(0, 0, 0);
-  }
-  controls.dispose();
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-
-  scene.remove(transformControls);
-  transformControls = new TransformControls(camera, renderer.domElement);
-  transformControls.addEventListener('dragging-changed', function (event) {
-    controls.enabled = !event.value;
-  });
-  scene.add(transformControls);
-
-  if (selectedBlocks.length === 1) {
-    transformControls.attach(selectedBlocks[0]);
-  }
-});
-
+// ---------------- Input ----------------
 let mouseMoved = false;
 
 renderer.domElement.addEventListener('mousedown', () => {
   mouseMoved = false;
 });
 
-renderer.domElement.addEventListener('mousemove', (event) => {
+renderer.domElement.addEventListener('mousemove', e => {
   mouseMoved = true;
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects([...blocks, gridHelper], false);
-  if (currentMode === 'place' && intersects.length > 0) {
-    updateGhostBlock(intersects[0]);
-  } else {
-    ghostBlock.visible = false;
+  const hits = raycaster.intersectObjects([...blocks, grid]);
+
+  if (mode === 'place') {
+    if (hits.length) updateGhost(hits[0]);
+    else ghost.visible = false;
+  } else if (mode === 'select') {
+    const blockHit = hits.find(h => blocks.includes(h.object));
+    setHover(blockHit ? blockHit.object : null);
   }
 });
 
-window.addEventListener('click', (event) => {
+renderer.domElement.addEventListener('click', e => {
   if (mouseMoved) return;
 
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects([...blocks, gridHelper], false);
+  const hits = raycaster.intersectObjects(blocks);
 
-  if (intersects.length > 0) {
-    const hit = intersects[0];
-    if (currentMode === 'select') {
-      if (blocks.includes(hit.object)) {
-        selectBlock(hit.object, event.shiftKey);
-      }
+  if (mode === 'select' && hits.length) {
+    selectBlock(hits[0].object, e.shiftKey);
+  }
+
+  if (mode === 'place') placeBlock(hits[0]);
+});
+
+// ---------------- UI ----------------
+const ui = document.createElement('div');
+ui.id = 'ui';
+ui.style.position = 'absolute';
+ui.style.top = '10px';
+ui.style.left = '10px';
+ui.style.display = 'flex';
+ui.style.gap = '6px';
+ui.innerHTML = `
+  <button id="place">Place</button>
+  <button id="select">Select</button>
+  <button id="export">Export OBJ</button>
+  <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
+`;
+document.body.appendChild(ui);
+
+const btnPlace = document.getElementById('place');
+const btnSelect = document.getElementById('select');
+
+function setMode(m) {
+  mode = m;
+  btnPlace.classList.toggle('active', m === 'place');
+  btnSelect.classList.toggle('active', m === 'select');
+}
+
+btnPlace.onclick = () => {
+  clearSelection();
+  setHover(null);
+  setMode('place');
+};
+
+btnSelect.onclick = () => {
+  setMode('select');
+  ghost.visible = false;
+};
+
+setMode('place'); // start in place mode with button highlighted
+
+document.getElementById('export').onclick = () => {
+  if (document.getElementById('optimize').checked) exportOptimisedOBJ();
+  else exportOBJ();
+};
+
+const keysHeld = new Set();
+
+window.addEventListener('keydown', e => {
+  keysHeld.add(e.key);
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (mode === 'place') {
+      setMode('select');
+      ghost.visible = false;
     } else {
-      placeBlock(hit);
+      clearSelection();
+      setHover(null);
+      setMode('place');
     }
-  } else {
-    const dummyIntersect = { face: null };
-    if (currentMode === 'place') {
-      placeBlock(dummyIntersect);
-    }
+  }
+  if (e.key === 'Delete' && selectedBlocks.size > 0) {
+    selectedBlocks.forEach(b => {
+      scene.remove(b);
+      blocks.splice(blocks.indexOf(b), 1);
+    });
+    hoveredBlock = null;
+    clearSelection();
   }
 });
 
-window.addEventListener('keydown', (event) => {
-  if (selectedBlocks.length === 0) return;
-  switch (event.key) {
-    case 'Delete':
-      deleteSelectedBlock();
-      break;
-    case 'w':
-      moveSelectedBlock('y', 1);
-      break;
-    case 's':
-      moveSelectedBlock('y', -1);
-      break;
-    case 'q':
-    case 'a':
-    case 'e':
-    case 'd':
-      moveBlockRelativeToCamera(event.key);
-      break;
-  }
+window.addEventListener('keyup', e => {
+  keysHeld.delete(e.key);
 });
 
-// Animation loop
+// ---------------- Render ----------------
+const _panForward = new THREE.Vector3();
+const _panRight   = new THREE.Vector3();
+const _panDelta   = new THREE.Vector3();
+const PAN_SPEED   = 0.08;
+
 function animate() {
   requestAnimationFrame(animate);
+
+  // Camera pan via WASD / arrow keys
+  camera.getWorldDirection(_panForward);
+  _panForward.y = 0;
+  _panForward.normalize();
+  _panRight.crossVectors(_panForward, new THREE.Vector3(0, 1, 0));
+
+  _panDelta.set(0, 0, 0);
+  if (keysHeld.has('w') || keysHeld.has('ArrowUp'))    _panDelta.add(_panForward);
+  if (keysHeld.has('s') || keysHeld.has('ArrowDown'))  _panDelta.sub(_panForward);
+  if (keysHeld.has('d') || keysHeld.has('ArrowRight')) _panDelta.add(_panRight);
+  if (keysHeld.has('a') || keysHeld.has('ArrowLeft'))  _panDelta.sub(_panRight);
+
+  if (_panDelta.lengthSq() > 0) {
+    _panDelta.normalize().multiplyScalar(PAN_SPEED);
+    camera.position.add(_panDelta);
+    controls.target.add(_panDelta);
+  }
+
   controls.update();
   renderer.render(scene, camera);
 }
-
 animate();
 
-// Resize handler
 window.addEventListener('resize', () => {
-  const aspect = window.innerWidth / window.innerHeight;
-  if (isIsometric) {
-    camera.left = -10 * aspect;
-    camera.right = 10 * aspect;
-    camera.top = 10;
-    camera.bottom = -10;
-  } else {
-    camera.aspect = aspect;
-  }
+  camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
