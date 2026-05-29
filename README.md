@@ -8,6 +8,7 @@ A simple browser-based 3D voxel mesh tool built with Three.js. Place and remove 
 - **Select mode** — click to select a block (highlights pink), shift-click to add more blocks to the selection
 - **Delete** — press the Delete key to remove all selected blocks at once
 - **Camera** — click and drag to orbit, WASD / arrow keys to pan
+- **OBJ import** — import the mesh a standard mesh back in (optimized files won't work)
 - **OBJ export** — export the mesh as a standard OBJ file
 - **Optimized OBJ export** — tick Optimize before exporting to get a clean mesh with hidden internal faces removed and coplanar faces merged (greedy meshing)
 
@@ -27,6 +28,7 @@ Then open the local URL shown in the terminal (typically `http://localhost:5173`
 | Input | Action |
 |---|---|
 | Click | Place block (Place mode) / Select block (Select mode) |
+| Ctrl + A | Select all blocks |
 | Shift + click | Add block to selection |
 | Click + drag | Orbit camera |
 | W / A / S / D | Pan camera |
