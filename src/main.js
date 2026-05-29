@@ -361,6 +361,103 @@ function exportOptimisedOBJ() {
   a.click();
 }
 
+// ---------------- Import OBJ ----------------
+function importOBJ(text) {
+  const lines = text.split('\n');
+  const verts = [];
+  const faces = [];
+
+  for (const line of lines) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'v') {
+      verts.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])]);
+    } else if (parts[0] === 'f') {
+      const indices = parts.slice(1).map(p => parseInt(p.split('/')[0]) - 1);
+      for (let i = 1; i < indices.length - 1; i++) {
+        faces.push([indices[0], indices[i], indices[i + 1]]);
+      }
+    }
+  }
+
+  if (verts.length === 0) return;
+
+  // Non-optimized export writes verts starting at the block center (not the true corner),
+  // so all coordinates are half-integers. Optimized export uses integer coords.
+  const isNonOptimized = verts.some(v =>
+    v.some(c => Math.abs(((c % 1) + 1) % 1 - 0.5) < 0.01)
+  );
+
+  const blockSet = new Set();
+
+  if (isNonOptimized) {
+    // exportOBJ writes 8 consecutive verts per block starting at the block center,
+    // so the minimum corner of each group IS the block center position.
+    for (let i = 0; i < verts.length; i += 8) {
+      const g = verts.slice(i, i + 8);
+      if (g.length < 8) break;
+      const cx = Math.min(...g.map(v => v[0]));
+      const cy = Math.min(...g.map(v => v[1]));
+      const cz = Math.min(...g.map(v => v[2]));
+      blockSet.add(`${cx},${cy},${cz}`);
+    }
+  } else {
+    // Optimized export uses integer vertex coords. Reconstruct each block by finding
+    // which unit cell sits behind each face (offset 0.5 inward from the face).
+    for (const [ia, ib, ic] of faces) {
+      const a = verts[ia], b = verts[ib], c = verts[ic];
+
+      // The face is perpendicular to the axis with the least variation across vertices.
+      const diffs = [0, 1, 2].map(ax =>
+        Math.max(Math.abs(a[ax]-b[ax]), Math.abs(a[ax]-c[ax]), Math.abs(b[ax]-c[ax]))
+      );
+      const axis = diffs.indexOf(Math.min(...diffs));
+
+      // Compute outward normal via cross product to determine which side the block is on.
+      const e1 = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
+      const e2 = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
+      const norm = [
+        e1[1]*e2[2] - e1[2]*e2[1],
+        e1[2]*e2[0] - e1[0]*e2[2],
+        e1[0]*e2[1] - e1[1]*e2[0]
+      ];
+
+      const faceCoord = a[axis];
+      const normalDir = norm[axis] > 0 ? 1 : -1;
+      // Block center on this axis is 0.5 units inward from the face.
+      const blockAxisCoord = faceCoord - normalDir * 0.5;
+
+      const ua = (axis + 1) % 3;
+      const va = (axis + 2) % 3;
+      const minU = Math.floor(Math.min(a[ua], b[ua], c[ua]));
+      const maxU = Math.ceil(Math.max(a[ua], b[ua], c[ua]));
+      const minV = Math.floor(Math.min(a[va], b[va], c[va]));
+      const maxV = Math.ceil(Math.max(a[va], b[va], c[va]));
+
+      // Each unit cell in the face's bounding rectangle is one block.
+      for (let u = minU; u < maxU; u++) {
+        for (let v = minV; v < maxV; v++) {
+          const pos = [0, 0, 0];
+          pos[axis] = blockAxisCoord;
+          pos[ua] = u + 0.5;
+          pos[va] = v + 0.5;
+          blockSet.add(`${pos[0]},${pos[1]},${pos[2]}`);
+        }
+      }
+    }
+  }
+
+  for (const key of blockSet) {
+    const [x, y, z] = key.split(',').map(Number);
+    if (isOccupied(x, y, z)) continue;
+    const mat = blockMaterial.clone();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
+    mesh.userData.originalMaterial = mat;
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    blocks.push(mesh);
+  }
+}
+
 // ---------------- Input ----------------
 let mouseMoved = false;
 
@@ -411,6 +508,8 @@ ui.innerHTML = `
   <button id="select">Select</button>
   <button id="export">Export OBJ</button>
   <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
+  <button id="import">Import OBJ</button>
+  <input type="file" id="import-file" accept=".obj" style="display:none">
 `;
 document.body.appendChild(ui);
 
@@ -440,6 +539,57 @@ document.getElementById('export').onclick = () => {
   if (document.getElementById('optimize').checked) exportOptimisedOBJ();
   else exportOBJ();
 };
+
+document.getElementById('import').onclick = () => {
+  document.getElementById('import-file').click();
+};
+
+document.getElementById('import-file').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => importOBJ(ev.target.result);
+  reader.readAsText(file);
+  e.target.value = '';
+};
+
+// ---------------- Drag-and-Drop OBJ Import ----------------
+const dropOverlay = document.createElement('div');
+dropOverlay.style.cssText = `
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.55); color:#fff; font-size:1.8rem; font-family:sans-serif;
+  border:4px dashed rgba(255,255,255,0.6); box-sizing:border-box; pointer-events:none; z-index:999;
+`;
+dropOverlay.textContent = 'Drop OBJ to import';
+document.body.appendChild(dropOverlay);
+
+let dragDepth = 0;
+
+document.addEventListener('dragenter', e => {
+  if ([...e.dataTransfer.items].some(i => i.kind === 'file')) {
+    if (++dragDepth === 1) dropOverlay.style.display = 'flex';
+  }
+});
+
+document.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) { dragDepth = 0; dropOverlay.style.display = 'none'; }
+});
+
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  dragDepth = 0;
+  dropOverlay.style.display = 'none';
+  const file = [...e.dataTransfer.files].find(f => f.name.toLowerCase().endsWith('.obj'));
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => importOBJ(ev.target.result);
+  reader.readAsText(file);
+});
 
 const keysHeld = new Set();
 
