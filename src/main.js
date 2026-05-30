@@ -783,7 +783,7 @@ function showHint(el) {
 }
 
 const ctrlAHint  = makeHint('CTRL+A to Select All');
-const deleteHint = makeHint('Press Delete to remove Selected blocks');
+const deleteHint = makeHint('Press Delete to remove blocks');
 
 let deletedCount    = 0;
 let ctrlAHintShown  = false;
@@ -824,7 +824,7 @@ window.addEventListener('keydown', e => {
       scene.remove(b);
       blocks.splice(blocks.indexOf(b), 1);
     });
-    hoveredBlock = null;
+    setHover(null);
     clearSelection();
     if (!ctrlAHintShown && deletedCount > 4 && blocks.length > 3) {
       ctrlAHintShown = true;
