@@ -35,10 +35,27 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 const transformControls = new TransformControls(camera, renderer.domElement);
-scene.add(transformControls.getHelper());
+const transformHelper = transformControls.getHelper();
+transformHelper.traverse(child => {
+  if (child.material) {
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach(m => { m.transparent = true; m.opacity = 0.5; });
+  }
+});
+scene.add(transformHelper);
 
 transformControls.addEventListener('dragging-changed', e => {
   controls.enabled = !e.value;
+});
+
+transformControls.addEventListener('objectChange', () => {
+  const obj = [...selectedBlocks][0];
+  if (!obj) return;
+  obj.position.set(
+    snap(obj.position.x),
+    Math.max(0.5, snap(obj.position.y)),
+    snap(obj.position.z)
+  );
 });
 
 // ---------------- Lights ----------------
@@ -769,7 +786,12 @@ function makeHint(text) {
   return el;
 }
 
+const hintShowCount = new Map();
+
 function showHint(el) {
+  const count = hintShowCount.get(el) || 0;
+  if (count >= 2) return;
+  hintShowCount.set(el, count + 1);
   const rect = document.getElementById('select').getBoundingClientRect();
   el.style.left = `${rect.left + rect.width / 2}px`;
   el.style.top  = `${rect.bottom + 10}px`;
@@ -785,8 +807,7 @@ function showHint(el) {
 const ctrlAHint  = makeHint('CTRL+A to Select All');
 const deleteHint = makeHint('Press Delete to remove blocks');
 
-let deletedCount    = 0;
-let ctrlAHintShown  = false;
+let deletedCount     = 0;
 let selectClickCount = 0;
 
 const keysHeld = new Set();
@@ -826,8 +847,7 @@ window.addEventListener('keydown', e => {
     });
     setHover(null);
     clearSelection();
-    if (!ctrlAHintShown && deletedCount > 4 && blocks.length > 3) {
-      ctrlAHintShown = true;
+    if (deletedCount > 4 && blocks.length > 3) {
       showHint(ctrlAHint);
     }
   }
