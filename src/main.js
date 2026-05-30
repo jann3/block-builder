@@ -35,7 +35,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 const transformControls = new TransformControls(camera, renderer.domElement);
-scene.add(transformControls);
+scene.add(transformControls.getHelper());
 
 transformControls.addEventListener('dragging-changed', e => {
   controls.enabled = !e.value;
