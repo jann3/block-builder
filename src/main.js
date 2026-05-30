@@ -42,10 +42,24 @@ transformControls.addEventListener('dragging-changed', e => {
 });
 
 // ---------------- Lights ----------------
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+// Primary light — top-right-front
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
 dir.position.set(10, 20, 10);
 scene.add(dir);
+
+// Secondary light — left-front, lower, dimmer — gives the left face a distinct value
+const dir2 = new THREE.DirectionalLight(0xffffff, 0.4);
+dir2.position.set(-8, 4, 6);
+scene.add(dir2);
+
+// Soft fill light that follows the camera — sits behind, right, and slightly below
+// the viewer so blocks always get a gentle kick of illumination from the eye direction.
+const camLight = new THREE.PointLight(0xffffff, 0.7, 0);
+camLight.position.set(3, -2, 5); // camera-local: right, down, behind
+camera.add(camLight);
+scene.add(camera);
 
 // ---------------- Grid ----------------
 const GRID_SIZE = 100;
@@ -106,6 +120,10 @@ const blocks = [];
 const selectedBlocks = new Set();
 let mode = 'place';
 
+const BLOCK_SIZES = [1, 3, 5];
+let blockSizeIndex = 0;
+let blockSize = 1;
+
 // ---------------- Materials ----------------
 const blockMaterial = new THREE.MeshStandardMaterial({ color: 0xc6a6c9 });
 const hoverMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color(0xc6a6c9).multiplyScalar(0.72) });
@@ -118,6 +136,7 @@ const mouse = new THREE.Vector2();
 function snap(v) {
   return Math.floor(v) + 0.5;
 }
+
 
 function isOccupied(x, y, z) {
   return blocks.some(b =>
@@ -140,43 +159,67 @@ function updateGhost(intersect) {
   const pos = new THREE.Vector3();
 
   if (intersect && intersect.face && blocks.includes(intersect.object)) {
-    pos.copy(intersect.object.position);
-    pos.add(intersect.face.normal);
+    // Start from the mouse's actual hit point so the cluster can be
+    // positioned freely (not locked to the hit block's centre).
+    pos.copy(intersect.point);
+    const n = intersect.face.normal;
+    const c = intersect.object.position;
+    // Normal axis: flush against the hit block face.
+    if (Math.abs(n.x) > 0.5) pos.x = c.x + n.x * (1 + blockSize) / 2;
+    if (Math.abs(n.y) > 0.5) pos.y = c.y + n.y * (1 + blockSize) / 2;
+    if (Math.abs(n.z) > 0.5) pos.z = c.z + n.z * (1 + blockSize) / 2;
+    // Perpendicular axes: snap to the 1×1 grid.
+    if (Math.abs(n.x) < 0.5) pos.x = snap(pos.x);
+    if (Math.abs(n.y) < 0.5) pos.y = snap(pos.y);
+    if (Math.abs(n.z) < 0.5) pos.z = snap(pos.z);
   } else {
     raycaster.ray.intersectPlane(groundPlane, pos);
-    pos.y = 0;
+    pos.x = snap(pos.x);
+    pos.y = blockSize / 2; // bottom row of cluster sits on the ground
+    pos.z = snap(pos.z);
   }
 
-  pos.set(snap(pos.x), snap(pos.y), snap(pos.z));
   ghost.position.copy(pos);
   ghost.visible = true;
 }
 
-function placeBlock(intersect) {
+function placeBlock() {
   const pos = ghost.position.clone();
+  const half = (blockSize - 1) / 2;
 
-  if (isOccupied(pos.x, pos.y, pos.z)) return;
-
-  const mat = blockMaterial.clone();
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
-  mesh.userData.originalMaterial = mat;
-  mesh.position.copy(pos);
-  scene.add(mesh);
-  blocks.push(mesh);
+  for (let dx = -half; dx <= half; dx++) {
+    for (let dy = -half; dy <= half; dy++) {
+      for (let dz = -half; dz <= half; dz++) {
+        const bx = pos.x + dx;
+        const by = pos.y + dy;
+        const bz = pos.z + dz;
+        if (isOccupied(bx, by, bz)) continue;
+        const mat = blockMaterial.clone();
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
+        mesh.userData.originalMaterial = mat;
+        mesh.userData.blockSize = 1;
+        mesh.position.set(bx, by, bz);
+        scene.add(mesh);
+        blocks.push(mesh);
+      }
+    }
+  }
 }
 
 // ---------------- Selection ----------------
-let hoveredBlock = null;
+const hoveredBlocks = new Set();
 
-function setHover(obj) {
-  if (hoveredBlock === obj) return;
-  if (hoveredBlock && !selectedBlocks.has(hoveredBlock)) {
-    hoveredBlock.material = hoveredBlock.userData.originalMaterial;
-  }
-  hoveredBlock = obj;
-  if (hoveredBlock && !selectedBlocks.has(hoveredBlock)) {
-    hoveredBlock.material = hoverMaterial;
-  }
+function setHover(target) {
+  hoveredBlocks.forEach(b => {
+    if (!selectedBlocks.has(b)) b.material = b.userData.originalMaterial;
+  });
+  hoveredBlocks.clear();
+  if (!target) return;
+  const arr = Array.isArray(target) ? target : [target];
+  arr.forEach(b => {
+    if (!selectedBlocks.has(b)) b.material = hoverMaterial;
+    hoveredBlocks.add(b);
+  });
 }
 
 function clearSelection() {
@@ -191,11 +234,11 @@ function selectBlock(obj, additive = false) {
   if (selectedBlocks.has(obj)) {
     // Shift-click on already-selected block → deselect it
     selectedBlocks.delete(obj);
-    obj.material = obj === hoveredBlock ? hoverMaterial : obj.userData.originalMaterial;
+    obj.material = hoveredBlocks.has(obj) ? hoverMaterial : obj.userData.originalMaterial;
   } else {
     selectedBlocks.add(obj);
     obj.material = selectedMaterial;
-    if (hoveredBlock === obj) hoveredBlock = null;
+    hoveredBlocks.delete(obj);
   }
 
   // Attach transform gizmo only for single selections
@@ -204,6 +247,26 @@ function selectBlock(obj, additive = false) {
   } else {
     transformControls.detach();
   }
+}
+
+function getBlocksInVolume(hitObj, faceNormal) {
+  if (blockSize === 1) return [hitObj];
+  const { x: cx, y: cy, z: cz } = hitObj.position;
+  const { x: nx, y: ny, z: nz } = faceNormal;
+  const half = (blockSize - 1) / 2;
+  const posSet = new Set();
+  for (let i = -half; i <= half; i++) {
+    for (let j = -half; j <= half; j++) {
+      for (let k = 0; k < blockSize; k++) {
+        let bx = cx, by = cy, bz = cz;
+        if      (Math.abs(nx) > 0.5) { by += i; bz += j; bx -= k * Math.sign(nx); }
+        else if (Math.abs(ny) > 0.5) { bx += i; bz += j; by -= k * Math.sign(ny); }
+        else                          { bx += i; by += j; bz -= k * Math.sign(nz); }
+        posSet.add(`${bx},${by},${bz}`);
+      }
+    }
+  }
+  return blocks.filter(b => posSet.has(`${b.position.x},${b.position.y},${b.position.z}`));
 }
 
 // ---------------- Export OBJ (KNOWN GOOD) ----------------
@@ -229,9 +292,10 @@ function exportOBJ() {
 
   for (const b of blocks) {
     const { x, y, z } = b.position;
+    const s = b.userData.blockSize || 1;
 
     for (const v of verts) {
-      obj += `v ${v[0]+x} ${v[1]+y} ${v[2]+z}\n`;
+      obj += `v ${v[0]*s+x} ${v[1]*s+y} ${v[2]*s+z}\n`;
     }
 
     for (const f of faces) {
@@ -252,18 +316,24 @@ function exportOBJ() {
 function exportOptimisedOBJ() {
   if (!blocks.length) return;
 
-  // Integer grid coords: block centered at (cx,cy,cz) → corner at (cx-0.5, cy-0.5, cz-0.5)
-  const gb = blocks.map(b => [
-    Math.round(b.position.x - 0.5),
-    Math.round(b.position.y - 0.5),
-    Math.round(b.position.z - 0.5)
-  ]);
+  // Expand each block into its constituent unit cells.
+  const gb = [];
+  for (const b of blocks) {
+    const s = b.userData.blockSize || 1;
+    const ox = Math.round(b.position.x - s / 2);
+    const oy = Math.round(b.position.y - s / 2);
+    const oz = Math.round(b.position.z - s / 2);
+    for (let dx = 0; dx < s; dx++)
+      for (let dy = 0; dy < s; dy++)
+        for (let dz = 0; dz < s; dz++)
+          gb.push([ox + dx, oy + dy, oz + dz]);
+  }
 
   const occ = new Set(gb.map(([x, y, z]) => `${x},${y},${z}`));
   const has = (x, y, z) => occ.has(`${x},${y},${z}`);
 
   const verts = [];
-  const tris  = [];
+  const quads = [];
   const vmap  = new Map();
 
   function getV(x, y, z) {
@@ -272,19 +342,13 @@ function exportOptimisedOBJ() {
     return vmap.get(k);
   }
 
-  function emitQuad(a, b, c, d) {
-    const [ia, ib, ic, id] = [a, b, c, d].map(([x, y, z]) => getV(x, y, z));
-    tris.push([ia, ib, ic], [ia, ic, id]);
-  }
-
-  // [normAxis, normDir, uAxis, vAxis]
   const faceTypes = [
-    [0, +1, 1, 2],  // +X
-    [0, -1, 1, 2],  // -X
-    [1, +1, 0, 2],  // +Y
-    [1, -1, 0, 2],  // -Y
-    [2, +1, 0, 1],  // +Z
-    [2, -1, 0, 1],  // -Z
+    [0, +1, 1, 2],
+    [0, -1, 1, 2],
+    [1, +1, 0, 2],
+    [1, -1, 0, 2],
+    [2, +1, 0, 1],
+    [2, -1, 0, 1],
   ];
 
   const lo = [Infinity, Infinity, Infinity];
@@ -293,6 +357,9 @@ function exportOptimisedOBJ() {
     if (b[i] < lo[i]) lo[i] = b[i];
     if (b[i] > hi[i]) hi[i] = b[i];
   }
+
+  // Phase 1: greedy meshing — collect rectangles per plane, don't emit yet.
+  const planeRects = new Map();
 
   for (const [na, nd, ua, va] of faceTypes) {
     for (let s = lo[na]; s <= hi[na]; s++) {
@@ -305,20 +372,22 @@ function exportOptimisedOBJ() {
         if (b[na] !== s) continue;
         const nb = [b[0], b[1], b[2]];
         nb[na] += nd;
-        if (!has(nb[0], nb[1], nb[2])) {
+        if (!has(nb[0], nb[1], nb[2]))
           grid[b[ua] - lo[ua]][b[va] - lo[va]] = 1;
-        }
       }
+
+      const nv = s + (nd === 1 ? 1 : 0);
+      const key = `${na},${nd},${nv}`;
+      if (!planeRects.has(key)) planeRects.set(key, []);
+      const rects = planeRects.get(key);
 
       for (let i = 0; i < uw; i++) {
         for (let j = 0; j < vw; j++) {
           if (!grid[i][j] || done[i][j]) continue;
 
-          // Extend along u axis
           let wi = 1;
           while (i + wi < uw && grid[i + wi][j] && !done[i + wi][j]) wi++;
 
-          // Extend along v axis keeping full u width
           let wj = 1;
           ext: while (j + wj < vw) {
             for (let di = 0; di < wi; di++) {
@@ -331,28 +400,88 @@ function exportOptimisedOBJ() {
             for (let dj = 0; dj < wj; dj++)
               done[i + di][j + dj] = 1;
 
-          const u0 = lo[ua] + i,      u1 = lo[ua] + i + wi;
-          const v0 = lo[va] + j,      v1 = lo[va] + j + wj;
-          const nv = s + (nd === 1 ? 1 : 0);
-
-          const pt = (u, v) => {
-            const c = [0, 0, 0];
-            c[na] = nv; c[ua] = u; c[va] = v;
-            return c;
-          };
-
-          // Winding formula derived to produce outward-facing normals
-          const flip = na % 2 === 0 ? nd : -nd;
-          if (flip > 0) emitQuad(pt(u0,v0), pt(u1,v0), pt(u1,v1), pt(u0,v1));
-          else          emitQuad(pt(u0,v0), pt(u0,v1), pt(u1,v1), pt(u1,v0));
+          rects.push({ na, nd, ua, va, nv,
+            u0: lo[ua] + i,     u1: lo[ua] + i + wi,
+            v0: lo[va] + j,     v1: lo[va] + j + wj });
         }
       }
     }
   }
 
+  // Phase 2: normalise boundaries then merge without introducing T-junctions.
+  for (const rects of planeRects.values()) {
+
+    // Step A — collect every u/v boundary coordinate from all rects in this plane
+    // and split every rect along all of them. After this, all rects are atomic:
+    // each spans exactly one boundary interval in each axis, so no T-junctions exist.
+    const uSet = new Set(), vSet = new Set();
+    for (const r of rects) { uSet.add(r.u0); uSet.add(r.u1); vSet.add(r.v0); vSet.add(r.v1); }
+    const uB = [...uSet].sort((a, b) => a - b);
+    const vB = [...vSet].sort((a, b) => a - b);
+
+    const atomics = [];
+    for (const r of rects) {
+      const us = uB.filter(u => u >= r.u0 && u <= r.u1);
+      const vs = vB.filter(v => v >= r.v0 && v <= r.v1);
+      for (let ui = 0; ui < us.length - 1; ui++)
+        for (let vi = 0; vi < vs.length - 1; vi++)
+          atomics.push({ ...r, u0: us[ui], u1: us[ui + 1], v0: vs[vi], v1: vs[vi + 1] });
+    }
+    rects.length = 0;
+    rects.push(...atomics);
+
+    // Step B — T-junction-safe merge: only merge two rects when no third rect has
+    // a corner on the boundary being eliminated. The range check is inclusive so it
+    // also catches junction-point corners at the endpoints of the eliminated edge —
+    // those become interior to the merged rect's outer edges and would be T-junctions.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      outer: for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          const a = rects[i], b = rects[j];
+          let m = null, fAxis, fCoord, rMin, rMax;
+
+          if      (a.u1===b.u0 && a.v0===b.v0 && a.v1===b.v1) { m={...a,u1:b.u1}; fAxis='u'; fCoord=a.u1; rMin=a.v0; rMax=a.v1; }
+          else if (b.u1===a.u0 && a.v0===b.v0 && a.v1===b.v1) { m={...a,u0:b.u0}; fAxis='u'; fCoord=b.u1; rMin=a.v0; rMax=a.v1; }
+          else if (a.v1===b.v0 && a.u0===b.u0 && a.u1===b.u1) { m={...a,v1:b.v1}; fAxis='v'; fCoord=a.v1; rMin=a.u0; rMax=a.u1; }
+          else if (b.v1===a.v0 && a.u0===b.u0 && a.u1===b.u1) { m={...a,v0:b.v0}; fAxis='v'; fCoord=b.v1; rMin=a.u0; rMax=a.u1; }
+
+          if (!m) continue;
+
+          let safe = true;
+          for (let k = 0; k < rects.length && safe; k++) {
+            if (k === i || k === j) continue;
+            const c = rects[k];
+            for (const [cu, cv] of [[c.u0,c.v0],[c.u1,c.v0],[c.u1,c.v1],[c.u0,c.v1]]) {
+              const hit = fAxis === 'u'
+                ? cu === fCoord && cv >= rMin && cv <= rMax
+                : cv === fCoord && cu >= rMin && cu <= rMax;
+              if (hit) { safe = false; break; }
+            }
+          }
+
+          if (safe) { rects[i] = m; rects.splice(j, 1); changed = true; break outer; }
+        }
+      }
+    }
+  }
+
+  // Phase 3: emit merged rects as 4-vertex quads.
+  for (const rects of planeRects.values()) {
+    for (const { na, nd, ua, va, nv, u0, u1, v0, v1 } of rects) {
+      const pt = (u, v) => { const c = [0, 0, 0]; c[na] = nv; c[ua] = u; c[va] = v; return c; };
+      const flip = na % 2 === 0 ? nd : -nd;
+      const corners = flip > 0
+        ? [pt(u0,v0), pt(u1,v0), pt(u1,v1), pt(u0,v1)]
+        : [pt(u0,v0), pt(u0,v1), pt(u1,v1), pt(u1,v0)];
+      quads.push(corners.map(([x, y, z]) => getV(x, y, z)));
+    }
+  }
+
   let obj = '';
   for (const [x, y, z] of verts) obj += `v ${x} ${y} ${z}\n`;
-  for (const f of tris)          obj += `f ${f.join(' ')}\n`;
+  for (const f of quads)         obj += `f ${f.join(' ')}\n`;
 
   const blob = new Blob([obj], { type: 'text/plain' });
   const a = document.createElement('a');
@@ -478,12 +607,13 @@ renderer.domElement.addEventListener('mousemove', e => {
     else ghost.visible = false;
   } else if (mode === 'select') {
     const blockHit = hits.find(h => blocks.includes(h.object));
-    setHover(blockHit ? blockHit.object : null);
+    setHover(blockHit ? getBlocksInVolume(blockHit.object, blockHit.face.normal) : null);
   }
 });
 
 renderer.domElement.addEventListener('mouseleave', () => {
   ghost.visible = false;
+  setHover(null);
 });
 
 renderer.domElement.addEventListener('click', e => {
@@ -493,12 +623,25 @@ renderer.domElement.addEventListener('click', e => {
   const hits = raycaster.intersectObjects(blocks);
 
   if (mode === 'select' && hits.length) {
-    selectBlock(hits[0].object, e.shiftKey);
+    const hit = hits[0];
+    if (blockSize === 1) {
+      selectBlock(hit.object, e.shiftKey);
+    } else {
+      const volume = getBlocksInVolume(hit.object, hit.face.normal);
+      if (!e.shiftKey) clearSelection();
+      volume.forEach(b => {
+        selectedBlocks.add(b);
+        b.material = selectedMaterial;
+        hoveredBlocks.delete(b);
+      });
+      if (selectedBlocks.size === 1) transformControls.attach([...selectedBlocks][0]);
+      else transformControls.detach();
+    }
     selectClickCount++;
     if (selectClickCount % 3 === 0) showHint(deleteHint);
   }
 
-  if (mode === 'place') placeBlock(hits[0]);
+  if (mode === 'place') placeBlock();
 });
 
 // ---------------- UI ----------------
@@ -512,6 +655,9 @@ ui.style.gap = '6px';
 ui.innerHTML = `
   <button id="place">Place</button>
   <button id="select">Select</button>
+  <button id="size-down">−</button>
+  <span id="size-label">1×1</span>
+  <button id="size-up">+</button>
   <button id="import">Import OBJ</button>
   <input type="file" id="import-file" accept=".obj" style="display:none">
   <button id="export">Export OBJ</button>
@@ -540,6 +686,20 @@ btnSelect.onclick = () => {
 };
 
 setMode('place'); // start in place mode with button highlighted
+
+function setBlockSize(index) {
+  blockSizeIndex = index;
+  blockSize = BLOCK_SIZES[blockSizeIndex];
+  ghost.scale.setScalar(blockSize);
+  const label = `${blockSize}×${blockSize}`;
+  document.getElementById('size-label').textContent = label;
+  document.getElementById('size-down').disabled = blockSizeIndex === 0;
+  document.getElementById('size-up').disabled   = blockSizeIndex === BLOCK_SIZES.length - 1;
+}
+
+document.getElementById('size-down').onclick = () => setBlockSize(Math.max(0, blockSizeIndex - 1));
+document.getElementById('size-up').onclick   = () => setBlockSize(Math.min(BLOCK_SIZES.length - 1, blockSizeIndex + 1));
+setBlockSize(0);
 
 document.getElementById('export').onclick = () => {
   if (document.getElementById('optimize').checked) exportOptimisedOBJ();
