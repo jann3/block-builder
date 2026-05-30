@@ -588,14 +588,16 @@ function importOBJ(text) {
 }
 
 // ---------------- Input ----------------
-let mouseMoved = false;
+let mouseDownX = 0, mouseDownY = 0;
+const DRAG_THRESHOLD_SQ = 36; // 6px radius before a move counts as a drag
 
-renderer.domElement.addEventListener('mousedown', () => {
-  mouseMoved = false;
+renderer.domElement.addEventListener('mousedown', e => {
+  mouseDownX = e.clientX;
+  mouseDownY = e.clientY;
 });
 
 renderer.domElement.addEventListener('mousemove', e => {
-  mouseMoved = true;
+
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
@@ -617,7 +619,8 @@ renderer.domElement.addEventListener('mouseleave', () => {
 });
 
 renderer.domElement.addEventListener('click', e => {
-  if (mouseMoved) return;
+  const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
+  if (dx * dx + dy * dy > DRAG_THRESHOLD_SQ) return;
 
   raycaster.setFromCamera(mouse, camera);
   const hits = raycaster.intersectObjects(blocks);
