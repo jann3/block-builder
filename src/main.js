@@ -136,6 +136,7 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const blocks = [];
 const selectedBlocks = new Set();
 let mode = 'place';
+let currentFileName = '';
 
 const BLOCK_SIZES = [1, 3, 5];
 let blockSizeIndex = 0;
@@ -325,7 +326,7 @@ function exportOBJ() {
   const blob = new Blob([obj], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'blocks.obj';
+  a.download = currentFileName ? `${currentFileName}.obj` : 'model.obj';
   a.click();
 }
 
@@ -503,7 +504,7 @@ function exportOptimisedOBJ() {
   const blob = new Blob([obj], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'model_optimised.obj';
+  a.download = currentFileName ? `${currentFileName}.obj` : 'model_optimised.obj';
   a.click();
 }
 
@@ -604,6 +605,58 @@ function importOBJ(text) {
   }
 }
 
+// ---------------- LocalStorage Save / Load ----------------
+const LS_PREFIX = 'bb_save_';
+
+function getSaveNames() {
+  return Object.keys(localStorage)
+    .filter(k => k.startsWith(LS_PREFIX))
+    .map(k => k.slice(LS_PREFIX.length))
+    .sort();
+}
+
+function saveToLocalStorage() {
+  const name = currentFileName.trim();
+  if (!name) {
+    alert('Please enter a filename before saving.');
+    document.getElementById('filename-input').focus();
+    return;
+  }
+  const data = JSON.stringify(blocks.map(b => ({
+    x: b.position.x, y: b.position.y, z: b.position.z,
+    s: b.userData.blockSize || 1
+  })));
+  localStorage.setItem(LS_PREFIX + name, data);
+}
+
+function loadSave(name) {
+  const raw = localStorage.getItem(LS_PREFIX + name);
+  if (!raw) return;
+  const data = JSON.parse(raw);
+
+  blocks.forEach(b => scene.remove(b));
+  blocks.length = 0;
+  clearSelection();
+  setHover(null);
+
+  for (const { x, y, z, s } of data) {
+    const mat = blockMaterial.clone();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
+    mesh.userData.originalMaterial = mat;
+    mesh.userData.blockSize = s || 1;
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    blocks.push(mesh);
+  }
+
+  currentFileName = name;
+  document.getElementById('filename-input').value = name;
+}
+
+function deleteSave(name) {
+  localStorage.removeItem(LS_PREFIX + name);
+}
+
 // ---------------- Input ----------------
 let mouseDownX = 0, mouseDownY = 0;
 const DRAG_THRESHOLD_SQ = 36; // 6px radius before a move counts as a drag
@@ -678,6 +731,9 @@ ui.innerHTML = `
   <button id="size-down">−</button>
   <span id="size-label">1×1</span>
   <button id="size-up">+</button>
+  <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off">
+  <button id="save">Save</button>
+  <button id="load">Load</button>
   <button id="import">Import OBJ</button>
   <input type="file" id="import-file" accept=".obj" style="display:none">
   <button id="export">Export OBJ</button>
@@ -739,6 +795,13 @@ document.getElementById('import-file').onchange = e => {
   e.target.value = '';
 };
 
+document.getElementById('filename-input').oninput = e => {
+  currentFileName = e.target.value;
+};
+
+document.getElementById('save').onclick = saveToLocalStorage;
+document.getElementById('load').onclick = showLoadModal;
+
 // ---------------- Drag-and-Drop OBJ Import ----------------
 const dropOverlay = document.createElement('div');
 dropOverlay.style.cssText = `
@@ -776,6 +839,78 @@ document.addEventListener('drop', e => {
   reader.onload = ev => importOBJ(ev.target.result);
   reader.readAsText(file);
 });
+
+// ---------------- Load Modal ----------------
+const loadModal = document.createElement('div');
+loadModal.id = 'load-modal';
+document.body.appendChild(loadModal);
+
+const loadModalBox = document.createElement('div');
+loadModalBox.className = 'modal-box';
+loadModal.appendChild(loadModalBox);
+
+loadModal.addEventListener('click', e => {
+  if (e.target === loadModal) hideLoadModal();
+});
+
+function hideLoadModal() {
+  loadModal.classList.remove('open');
+}
+
+function showLoadModal() {
+  loadModalBox.innerHTML = '';
+
+  const title = document.createElement('div');
+  title.className = 'modal-title';
+  title.textContent = 'Load Save';
+  loadModalBox.appendChild(title);
+
+  const names = getSaveNames();
+
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'modal-empty';
+    empty.textContent = 'No saved files.';
+    loadModalBox.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'modal-file-list';
+
+    for (const name of names) {
+      const row = document.createElement('div');
+      row.className = 'modal-file-row';
+
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'modal-load-btn';
+      loadBtn.textContent = name;
+      loadBtn.onclick = () => { loadSave(name); hideLoadModal(); };
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'modal-delete-btn';
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete save';
+      delBtn.onclick = () => { deleteSave(name); showLoadModal(); };
+
+      row.appendChild(loadBtn);
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    }
+
+    loadModalBox.appendChild(list);
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'modal-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = hideLoadModal;
+  footer.appendChild(cancelBtn);
+  loadModalBox.appendChild(footer);
+
+  loadModal.classList.add('open');
+}
 
 // ---------------- Hint Popovers ----------------
 function makeHint(text) {
