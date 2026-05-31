@@ -10,6 +10,36 @@ body {
     overflow: hidden;
 }
 
+:focus-visible {
+    outline: 2px solid var(--color-selected);
+    outline-offset: 2px;
+}
+
+#ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+}
+
+#ui-left,
+#ui-right {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.ui-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
 #ui button {
     background: var(--color-bg-dark);
     color: var(--color-text);
@@ -21,7 +51,12 @@ body {
     transition: background 0.15s;
 }
 
-#ui button:hover {
+#ui button:disabled {
+    color: #555;
+    cursor: default;
+}
+
+#ui button:hover:not(:disabled) {
     background: #3a3a3c;
 }
 
@@ -97,12 +132,12 @@ body {
     font-size: 1.1rem;
     font-family: Arial, Helvetica, sans-serif;
     width: 130px;
-    outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, background 0.15s;
 }
 
 #filename-input:focus {
     border-color: #a78bca;
+    background: rgba(167, 139, 202, 0.15);
 }
 
 #filename-input::placeholder {

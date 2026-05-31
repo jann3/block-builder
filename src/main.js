@@ -720,24 +720,31 @@ renderer.domElement.addEventListener('click', e => {
 // ---------------- UI ----------------
 const ui = document.createElement('div');
 ui.id = 'ui';
-ui.style.position = 'absolute';
-ui.style.top = '10px';
-ui.style.left = '10px';
-ui.style.display = 'flex';
-ui.style.gap = '6px';
 ui.innerHTML = `
-  <button id="place">Place</button>
-  <button id="select">Select</button>
-  <button id="size-down">−</button>
-  <span id="size-label">1×1</span>
-  <button id="size-up">+</button>
-  <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off">
-  <button id="save">Save</button>
-  <button id="load">Load</button>
-  <button id="import">Import OBJ</button>
-  <input type="file" id="import-file" accept=".obj" style="display:none">
-  <button id="export">Export OBJ</button>
-  <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
+  <div id="ui-left">
+    <div class="ui-row">
+      <button id="place">Place</button>
+      <button id="select">Select</button>
+    </div>
+    <div class="ui-row">
+      <button id="size-down">−</button>
+      <span id="size-label">1×1</span>
+      <button id="size-up">+</button>
+    </div>
+  </div>
+  <div id="ui-right">
+    <div class="ui-row">
+      <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off">
+      <button id="save">Save</button>
+      <button id="load">Load</button>
+    </div>
+    <div class="ui-row">
+      <button id="import">Import</button>
+      <input type="file" id="import-file" accept=".obj" style="display:none">
+      <button id="export">Export</button>
+      <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
+    </div>
+  </div>
 `;
 document.body.appendChild(ui);
 
