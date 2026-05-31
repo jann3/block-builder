@@ -948,6 +948,7 @@ let selectClickCount = 0;
 const keysHeld = new Set();
 
 window.addEventListener('keydown', e => {
+  if (document.activeElement === document.getElementById('filename-input')) return;
   if (e.ctrlKey && e.key === 'a') {
     e.preventDefault();
     setMode('select');
@@ -989,6 +990,7 @@ window.addEventListener('keydown', e => {
 });
 
 window.addEventListener('keyup', e => {
+  if (document.activeElement === document.getElementById('filename-input')) return;
   keysHeld.delete(e.key);
 });
 
