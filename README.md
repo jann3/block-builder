@@ -31,7 +31,6 @@ Then open the local URL shown in the terminal (typically `http://localhost:5173`
 | Input | Action |
 |---|---|
 | Click | Place block (Place mode) / Select block (Select mode) |
-| Ctrl + A | Select all blocks |
 | Shift + click | Add block to selection |
 | Click + drag | Orbit camera |
 | W / A / S / D | Pan camera |
@@ -39,3 +38,9 @@ Then open the local URL shown in the terminal (typically `http://localhost:5173`
 | Space | Toggle between Place and Select mode |
 | Delete | Delete selected block(s) |
 | Drag & drop `.obj` | Import OBJ file |
+| Ctrl + A | Select all blocks |
+| Ctrl + S | Save to localStorage |
+| Ctrl + L | Open Load dialog |
+| Ctrl + I | Import OBJ file |
+| Ctrl + E | Export OBJ file |
+| O | Toggle Optimize on/off |
