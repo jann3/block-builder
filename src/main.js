@@ -968,6 +968,33 @@ window.addEventListener('keydown', e => {
     transformControls.detach();
     return;
   }
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    saveToLocalStorage();
+    return;
+  }
+  if (e.ctrlKey && e.key === 'l') {
+    e.preventDefault();
+    showLoadModal();
+    return;
+  }
+  if (e.ctrlKey && e.key === 'i') {
+    e.preventDefault();
+    document.getElementById('import-file').click();
+    return;
+  }
+  if (e.ctrlKey && e.key === 'e') {
+    e.preventDefault();
+    if (document.getElementById('optimize').checked) exportOptimisedOBJ();
+    else exportOBJ();
+    return;
+  }
+  if (!e.ctrlKey && e.key === 'o') {
+    e.preventDefault();
+    const cb = document.getElementById('optimize');
+    cb.checked = !cb.checked;
+    return;
+  }
 
   keysHeld.add(e.key);
   if (e.key === ' ') {
