@@ -726,7 +726,7 @@ ui.innerHTML = `
       <button id="place">Place</button>
       <button id="select">Select</button>
     </div>
-    <div class="ui-row">
+    <div class="ui-row" id="size-row">
       <button id="size-down">−</button>
       <span id="size-label">1×1</span>
       <button id="size-up">+</button>
