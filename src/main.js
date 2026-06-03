@@ -734,7 +734,7 @@ ui.innerHTML = `
   </div>
   <div id="ui-right">
     <div class="ui-row">
-      <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off">
+      <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off" aria-describedby="filename-hint">
       <button id="save">Save</button>
       <button id="load">Load</button>
     </div>
@@ -920,10 +920,13 @@ function showLoadModal() {
 }
 
 // ---------------- Hint Popovers ----------------
-function makeHint(text) {
+function makeHint(text, role = 'status') {
   const el = document.createElement('div');
   el.className = 'hint-popover';
   el.textContent = text;
+  el.setAttribute('role', role);
+  el.setAttribute('aria-live', role === 'alert' ? 'assertive' : 'polite');
+  el.setAttribute('aria-hidden', 'true');
   document.body.appendChild(el);
   return el;
 }
@@ -939,16 +942,21 @@ function showHint(el) {
   el.style.top  = `${rect.bottom + 10}px`;
   el.classList.remove('hiding');
   el.classList.add('visible');
+  el.setAttribute('aria-hidden', 'false');
   setTimeout(() => {
     el.classList.remove('visible');
     el.classList.add('hiding');
-    el.addEventListener('animationend', () => el.classList.remove('hiding'), { once: true });
+    el.addEventListener('animationend', () => {
+      el.classList.remove('hiding');
+      el.setAttribute('aria-hidden', 'true');
+    }, { once: true });
   }, 5000);
 }
 
 const ctrlAHint    = makeHint('CTRL+A to Select All');
 const deleteHint   = makeHint('Press Delete to remove blocks');
-const filenameHint = makeHint('Enter a filename');
+const filenameHint = makeHint('Enter a filename', 'alert');
+filenameHint.id    = 'filename-hint';
 
 let filenameHintTimer = null;
 
@@ -959,11 +967,15 @@ function showFilenameHint() {
   filenameHint.style.top  = `${rect.bottom + 10}px`;
   filenameHint.classList.remove('hiding');
   filenameHint.classList.add('visible');
+  filenameHint.setAttribute('aria-hidden', 'false');
   clearTimeout(filenameHintTimer);
   filenameHintTimer = setTimeout(() => {
     filenameHint.classList.remove('visible');
     filenameHint.classList.add('hiding');
-    filenameHint.addEventListener('animationend', () => filenameHint.classList.remove('hiding'), { once: true });
+    filenameHint.addEventListener('animationend', () => {
+      filenameHint.classList.remove('hiding');
+      filenameHint.setAttribute('aria-hidden', 'true');
+    }, { once: true });
   }, 3000);
 }
 
