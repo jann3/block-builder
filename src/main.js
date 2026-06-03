@@ -618,7 +618,7 @@ function getSaveNames() {
 function saveToLocalStorage() {
   const name = currentFileName.trim();
   if (!name) {
-    alert('Please enter a filename before saving.');
+    showFilenameHint();
     document.getElementById('filename-input').focus();
     return;
   }
@@ -946,8 +946,26 @@ function showHint(el) {
   }, 5000);
 }
 
-const ctrlAHint  = makeHint('CTRL+A to Select All');
-const deleteHint = makeHint('Press Delete to remove blocks');
+const ctrlAHint    = makeHint('CTRL+A to Select All');
+const deleteHint   = makeHint('Press Delete to remove blocks');
+const filenameHint = makeHint('Enter a filename');
+
+let filenameHintTimer = null;
+
+function showFilenameHint() {
+  const input = document.getElementById('filename-input');
+  const rect = input.getBoundingClientRect();
+  filenameHint.style.left = `${rect.left + rect.width / 2}px`;
+  filenameHint.style.top  = `${rect.bottom + 10}px`;
+  filenameHint.classList.remove('hiding');
+  filenameHint.classList.add('visible');
+  clearTimeout(filenameHintTimer);
+  filenameHintTimer = setTimeout(() => {
+    filenameHint.classList.remove('visible');
+    filenameHint.classList.add('hiding');
+    filenameHint.addEventListener('animationend', () => filenameHint.classList.remove('hiding'), { once: true });
+  }, 3000);
+}
 
 let deletedCount     = 0;
 let selectClickCount = 0;
