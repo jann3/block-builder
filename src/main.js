@@ -259,8 +259,8 @@ function selectBlock(obj, additive = false) {
     hoveredBlocks.delete(obj);
   }
 
-  // Attach transform gizmo only for single selections
-  if (selectedBlocks.size === 1) {
+  // Attach transform gizmo only for single selections and when not in additive mode
+  if (selectedBlocks.size === 1 && !additive) {
     transformControls.attach([...selectedBlocks][0]);
   } else {
     transformControls.detach();
@@ -707,7 +707,7 @@ renderer.domElement.addEventListener('click', e => {
         b.material = selectedMaterial;
         hoveredBlocks.delete(b);
       });
-      if (selectedBlocks.size === 1) transformControls.attach([...selectedBlocks][0]);
+      if (selectedBlocks.size === 1 && !e.shiftKey) transformControls.attach([...selectedBlocks][0]);
       else transformControls.detach();
     }
     selectClickCount++;
