@@ -178,7 +178,7 @@ function updateGhost(intersect) {
 
   if (intersect && intersect.face && blocks.includes(intersect.object)) {
     // Start from the mouse's actual hit point so the cluster can be
-    // positioned freely (not locked to the hit block's centre).
+    // positioned freely (not locked to the hit block's center).
     pos.copy(intersect.point);
     const n = intersect.face.normal;
     const c = intersect.object.position;
@@ -330,8 +330,8 @@ function exportOBJ() {
   a.click();
 }
 
-// ---------------- Export Optimised OBJ ----------------
-function exportOptimisedOBJ() {
+// ---------------- Export Optimized OBJ ----------------
+function exportOptimizedOBJ() {
   if (!blocks.length) return;
 
   // Expand each block into its constituent unit cells.
@@ -504,7 +504,7 @@ function exportOptimisedOBJ() {
   const blob = new Blob([obj], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = currentFileName ? `${currentFileName}.obj` : 'model_optimised.obj';
+  a.download = currentFileName ? `${currentFileName}.obj` : 'model_optimized.obj';
   a.click();
 }
 
@@ -733,16 +733,19 @@ ui.innerHTML = `
     </div>
   </div>
   <div id="ui-right">
-    <div class="ui-row">
-      <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off" aria-describedby="filename-hint">
+    <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off" aria-describedby="filename-hint">
+    <div class="ui-row" id="save-load-row">
       <button id="save">Save</button>
       <button id="load">Load</button>
     </div>
-    <div class="ui-row">
+    <div class="ui-row" id="import-export-row">
       <button id="import">Import</button>
       <input type="file" id="import-file" accept=".obj" style="display:none">
       <button id="export">Export</button>
+    </div>
+    <div class="ui-row" id="optimize-help-row">
       <label id="optimize-label"><input type="checkbox" id="optimize"> Optimize</label>
+      <button id="help-btn" aria-label="Help" aria-expanded="false" aria-controls="help-modal">?</button>
     </div>
   </div>
 `;
@@ -785,7 +788,7 @@ document.getElementById('size-up').onclick   = () => setBlockSize(Math.min(BLOCK
 setBlockSize(0);
 
 document.getElementById('export').onclick = () => {
-  if (document.getElementById('optimize').checked) exportOptimisedOBJ();
+  if (document.getElementById('optimize').checked) exportOptimizedOBJ();
   else exportOBJ();
 };
 
@@ -982,10 +985,116 @@ function showFilenameHint() {
 let deletedCount     = 0;
 let selectClickCount = 0;
 
+// ---------------- Help Modal ----------------
+const helpModal = document.createElement('div');
+helpModal.id = 'help-modal';
+helpModal.setAttribute('role', 'dialog');
+helpModal.setAttribute('aria-modal', 'true');
+helpModal.setAttribute('aria-label', 'Help');
+helpModal.setAttribute('aria-hidden', 'true');
+helpModal.innerHTML = `
+  <div class="modal-box help-modal-box">
+    <div class="help-modal-header">
+      <div class="modal-title">Help using Block Builder</div>
+    </div>
+    <div class="help-section">
+      <h3>Tools &amp; Modes</h3>
+      <p><strong>Place Mode</strong> - Click on the grid to place blocks.</p>
+      <p><strong>Select Mode</strong> - Click blocks to select them. <kbd>Shift</kbd>+Click to add or remove from the selection. Press <kbd>Delete</kbd> to remove selected blocks.</p>
+      <p><strong>Size</strong> - Use <kbd>−</kbd> and <kbd>+</kbd> to change block and selection sizes.</p>
+    </div>
+    <div class="help-section">
+      <h3>Saving &amp; Exporting</h3>
+      <p><strong>Save / Load</strong> - Your work is saved in the browser - enter a filename and click Save.</p>
+      <p><strong>Import / Export</strong> - Imports and exports OBJ files. You can also drag and drop an OBJ into the viewport.</p>
+      <p class="help-highlight"><strong class="help-highlight">Optimize</strong> - When enabled, exported OBJ files merge faces to reduce polygon count. Use this for finalized exports intended for other tools or games. Standard exports (without Optimize) can be imported back into Block Builder to continue editing.</p>
+    </div>
+    <div class="help-section">
+      <h3>Keyboard Shortcuts</h3>
+      <div class="help-shortcuts">
+        <span class="help-shortcut-key"><kbd>Space</kbd></span>
+        <span class="help-shortcut-desc">Toggle Place / Select mode</span>
+        <span class="help-shortcut-key"><kbd>−</kbd> / <kbd>+</kbd></span>
+        <span class="help-shortcut-desc">Decrease / increase size</span>
+        <span class="help-shortcut-key"><kbd>Shift</kbd>+Click</span>
+        <span class="help-shortcut-desc">Add block to selection</span>
+        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>A</kbd></span>
+        <span class="help-shortcut-desc">Select all blocks</span>
+        <span class="help-shortcut-key"><kbd>Delete</kbd></span>
+        <span class="help-shortcut-desc">Delete selected blocks</span>
+        <span class="help-shortcut-key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span>
+        <span class="help-shortcut-desc">Pan camera</span>
+        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>S</kbd></span>
+        <span class="help-shortcut-desc">Save</span>
+        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>L</kbd></span>
+        <span class="help-shortcut-desc">Load</span>
+        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>I</kbd></span>
+        <span class="help-shortcut-desc">Import OBJ</span>
+        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>E</kbd></span>
+        <span class="help-shortcut-desc">Export OBJ</span>
+        <span class="help-shortcut-key"><kbd>O</kbd></span>
+        <span class="help-shortcut-desc">Toggle Optimize</span>
+        <span class="help-shortcut-key"><kbd>?</kbd></span>
+        <span class="help-shortcut-desc">Open this help</span>
+      </div>
+    </div>
+  </div>
+`;
+document.body.appendChild(helpModal);
+
+const helpBtn = document.getElementById('help-btn');
+
+function openHelpModal() {
+  helpModal.classList.remove('closing');
+  helpModal.classList.add('open');
+  helpModal.setAttribute('aria-hidden', 'false');
+  helpBtn.textContent = '✕';
+  helpBtn.setAttribute('aria-expanded', 'true');
+  helpBtn.setAttribute('aria-label', 'Close');
+}
+
+function closeHelpModal() {
+  helpModal.classList.remove('open');
+  helpModal.classList.add('closing');
+  helpModal.setAttribute('aria-hidden', 'true');
+  helpBtn.textContent = '?';
+  helpBtn.setAttribute('aria-expanded', 'false');
+  helpBtn.setAttribute('aria-label', 'Help');
+  helpModal.addEventListener('animationend', () => helpModal.classList.remove('closing'), { once: true });
+}
+
+helpBtn.addEventListener('click', () => {
+  if (helpModal.classList.contains('open')) closeHelpModal();
+  else openHelpModal();
+});
+
+helpModal.addEventListener('click', e => {
+  if (e.target === helpModal) closeHelpModal();
+});
+
+
 const keysHeld = new Set();
 
 window.addEventListener('keydown', e => {
   if (document.activeElement === document.getElementById('filename-input')) return;
+  if (e.key === 'Escape') {
+    if (helpModal.classList.contains('open')) { closeHelpModal(); return; }
+  }
+  if (e.key === '?') {
+    if (helpModal.classList.contains('open')) closeHelpModal();
+    else openHelpModal();
+    return;
+  }
+  if (!e.ctrlKey && e.key === '-') {
+    e.preventDefault();
+    setBlockSize(Math.max(0, blockSizeIndex - 1));
+    return;
+  }
+  if (!e.ctrlKey && (e.key === '+' || e.key === '=')) {
+    e.preventDefault();
+    setBlockSize(Math.min(BLOCK_SIZES.length - 1, blockSizeIndex + 1));
+    return;
+  }
   if (e.ctrlKey && e.key === 'a') {
     e.preventDefault();
     setMode('select');
@@ -1015,7 +1124,7 @@ window.addEventListener('keydown', e => {
   }
   if (e.ctrlKey && e.key === 'e') {
     e.preventDefault();
-    if (document.getElementById('optimize').checked) exportOptimisedOBJ();
+    if (document.getElementById('optimize').checked) exportOptimizedOBJ();
     else exportOBJ();
     return;
   }
