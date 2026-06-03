@@ -1011,7 +1011,7 @@ helpModal.innerHTML = `
           <h3>Saving &amp; Exporting</h3>
           <p><strong>Save / Load</strong> - Your work is saved in the browser - enter a filename and click Save.</p>
           <p><strong>Import / Export</strong> - Imports and exports OBJ files. You can also drag and drop an OBJ into the viewport.</p>
-          <p class="help-highlight"><strong class="help-highlight">Optimize</strong> - When enabled, exported OBJ files merge faces to reduce polygon count. Use this for finalized exports intended for other tools or games. Standard exports (without Optimize) can be imported back into Block Builder to continue editing.</p>
+          <p class="help-highlight"><strong class="help-highlight">Optimize</strong> - When enabled, exported OBJ files will reduce and merge faces to lower the overall polygon count. Use this for finalized exports intended for other tools or games. Standard exports (without Optimize selected) can be imported back into Block Builder to continue editing.</p>
         </div>
       </div>
       <div class="help-col-shortcuts">
