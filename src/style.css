@@ -27,6 +27,18 @@ body {
     pointer-events: none;
 }
 
+@media (max-width: 27rem) {
+    #ui-file {
+        width: 100%;
+        margin-left: 0;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    #optimize-help-row {
+        justify-content: space-between;
+    }
+}
+
 @media (max-aspect-ratio: 6/5) {
     #ui {
         bottom: 10px;
