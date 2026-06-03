@@ -721,7 +721,7 @@ renderer.domElement.addEventListener('click', e => {
 const ui = document.createElement('div');
 ui.id = 'ui';
 ui.innerHTML = `
-  <div id="ui-left">
+  <div id="ui-tools">
     <div class="ui-row">
       <button id="place">Place</button>
       <button id="select">Select</button>
@@ -732,7 +732,7 @@ ui.innerHTML = `
       <button id="size-up">+</button>
     </div>
   </div>
-  <div id="ui-right">
+  <div id="ui-file">
     <input type="text" id="filename-input" placeholder="untitled" spellcheck="false" autocomplete="off" aria-describedby="filename-hint">
     <div class="ui-row" id="save-load-row">
       <button id="save">Save</button>
@@ -997,45 +997,51 @@ helpModal.innerHTML = `
     <div class="help-modal-header">
       <div class="modal-title">Help using Block Builder</div>
     </div>
-    <div class="help-section">
-      <h3>Tools &amp; Modes</h3>
-      <p><strong>Place Mode</strong> - Click on the grid to place blocks.</p>
-      <p><strong>Select Mode</strong> - Click blocks to select them. <kbd>Shift</kbd>+Click to add or remove from the selection. Press <kbd>Delete</kbd> to remove selected blocks.</p>
-      <p><strong>Size</strong> - Use <kbd>−</kbd> and <kbd>+</kbd> to change block and selection sizes.</p>
-    </div>
-    <div class="help-section">
-      <h3>Saving &amp; Exporting</h3>
-      <p><strong>Save / Load</strong> - Your work is saved in the browser - enter a filename and click Save.</p>
-      <p><strong>Import / Export</strong> - Imports and exports OBJ files. You can also drag and drop an OBJ into the viewport.</p>
-      <p class="help-highlight"><strong class="help-highlight">Optimize</strong> - When enabled, exported OBJ files merge faces to reduce polygon count. Use this for finalized exports intended for other tools or games. Standard exports (without Optimize) can be imported back into Block Builder to continue editing.</p>
-    </div>
-    <div class="help-section">
-      <h3>Keyboard Shortcuts</h3>
-      <div class="help-shortcuts">
-        <span class="help-shortcut-key"><kbd>Space</kbd></span>
-        <span class="help-shortcut-desc">Toggle Place / Select mode</span>
-        <span class="help-shortcut-key"><kbd>−</kbd> / <kbd>+</kbd></span>
-        <span class="help-shortcut-desc">Decrease / increase size</span>
-        <span class="help-shortcut-key"><kbd>Shift</kbd>+Click</span>
-        <span class="help-shortcut-desc">Add block to selection</span>
-        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>A</kbd></span>
-        <span class="help-shortcut-desc">Select all blocks</span>
-        <span class="help-shortcut-key"><kbd>Delete</kbd></span>
-        <span class="help-shortcut-desc">Delete selected blocks</span>
-        <span class="help-shortcut-key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span>
-        <span class="help-shortcut-desc">Pan camera</span>
-        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>S</kbd></span>
-        <span class="help-shortcut-desc">Save</span>
-        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>L</kbd></span>
-        <span class="help-shortcut-desc">Load</span>
-        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>I</kbd></span>
-        <span class="help-shortcut-desc">Import OBJ</span>
-        <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>E</kbd></span>
-        <span class="help-shortcut-desc">Export OBJ</span>
-        <span class="help-shortcut-key"><kbd>O</kbd></span>
-        <span class="help-shortcut-desc">Toggle Optimize</span>
-        <span class="help-shortcut-key"><kbd>?</kbd></span>
-        <span class="help-shortcut-desc">Open this help</span>
+    <div class="help-body">
+      <div class="help-col-main">
+        <div class="help-section">
+          <h3>Tools &amp; Modes</h3>
+          <p><strong>Place Mode</strong> - Click on the grid to place blocks.</p>
+          <p><strong>Select Mode</strong> - Click blocks to select them. <kbd>Shift</kbd>+Click to add or remove from the selection. Press <kbd>Delete</kbd> to remove selected blocks.</p>
+          <p><strong>Size</strong> - Use <kbd>−</kbd> and <kbd>+</kbd> to change block and selection sizes.</p>
+        </div>
+        <div class="help-section">
+          <h3>Saving &amp; Exporting</h3>
+          <p><strong>Save / Load</strong> - Your work is saved in the browser - enter a filename and click Save.</p>
+          <p><strong>Import / Export</strong> - Imports and exports OBJ files. You can also drag and drop an OBJ into the viewport.</p>
+          <p class="help-highlight"><strong class="help-highlight">Optimize</strong> - When enabled, exported OBJ files merge faces to reduce polygon count. Use this for finalized exports intended for other tools or games. Standard exports (without Optimize) can be imported back into Block Builder to continue editing.</p>
+        </div>
+      </div>
+      <div class="help-col-shortcuts">
+        <div class="help-section">
+          <h3>Keyboard Shortcuts</h3>
+          <div class="help-shortcuts">
+            <span class="help-shortcut-key"><kbd>Space</kbd></span>
+            <span class="help-shortcut-desc">Toggle Place / Select mode</span>
+            <span class="help-shortcut-key"><kbd>−</kbd> / <kbd>+</kbd></span>
+            <span class="help-shortcut-desc">Decrease / increase size</span>
+            <span class="help-shortcut-key"><kbd>Shift</kbd>+Click</span>
+            <span class="help-shortcut-desc">Add block to selection</span>
+            <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>A</kbd></span>
+            <span class="help-shortcut-desc">Select all blocks</span>
+            <span class="help-shortcut-key"><kbd>Delete</kbd></span>
+            <span class="help-shortcut-desc">Delete selected blocks</span>
+            <span class="help-shortcut-key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span>
+            <span class="help-shortcut-desc">Pan camera</span>
+            <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>S</kbd></span>
+            <span class="help-shortcut-desc">Save</span>
+            <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>L</kbd></span>
+            <span class="help-shortcut-desc">Load</span>
+            <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>I</kbd></span>
+            <span class="help-shortcut-desc">Import OBJ</span>
+            <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>E</kbd></span>
+            <span class="help-shortcut-desc">Export OBJ</span>
+            <span class="help-shortcut-key"><kbd>O</kbd></span>
+            <span class="help-shortcut-desc">Toggle Optimize</span>
+            <span class="help-shortcut-key"><kbd>?</kbd></span>
+            <span class="help-shortcut-desc">Open this help</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1071,6 +1077,17 @@ helpBtn.addEventListener('click', () => {
 helpModal.addEventListener('click', e => {
   if (e.target === helpModal) closeHelpModal();
 });
+
+helpModal.addEventListener('wheel', e => {
+  const box = helpModal.querySelector('.modal-box');
+  if (box.contains(e.target)) return;
+  const lineHeight = 20;
+  const delta = e.deltaMode === 2 ? e.deltaY * box.clientHeight
+              : e.deltaMode === 1 ? e.deltaY * lineHeight
+              : e.deltaY;
+  box.scrollTop += delta;
+  e.preventDefault();
+}, { passive: false });
 
 
 const keysHeld = new Set();
