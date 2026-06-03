@@ -221,8 +221,8 @@ body {
     to   { opacity: 0; }
 }
 
-.help-modal-box {
-    max-width: 540px;
+.modal-box.help-modal-box {
+    max-width: 648px;
     max-height: calc(100vh - 40px);
     overflow-y: auto;
     gap: 16px;

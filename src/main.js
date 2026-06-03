@@ -1005,6 +1005,7 @@ helpModal.innerHTML = `
           <p><strong>Place Mode</strong> - Click on the grid to place blocks.</p>
           <p><strong>Select Mode</strong> - Click blocks to select them. <kbd>Shift</kbd>+Click to add or remove from the selection. Press <kbd>Delete</kbd> to remove selected blocks.</p>
           <p><strong>Size</strong> - Use <kbd>−</kbd> and <kbd>+</kbd> to change block and selection sizes.</p>
+          <p><strong>Camera</strong> - Click and drag to orbit. Right-click and drag to pan. Scroll to zoom.</p>
         </div>
         <div class="help-section">
           <h3>Saving &amp; Exporting</h3>
