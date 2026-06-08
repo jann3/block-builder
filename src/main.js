@@ -662,6 +662,53 @@ function deleteSave(name) {
 let mouseDownX = 0, mouseDownY = 0;
 const DRAG_THRESHOLD_SQ = 36; // 6px radius before a move counts as a drag
 
+// ---------------- Long-press to delete (mobile) ----------------
+let longPressTimer = null;
+let longPressTouchX = 0;
+let longPressTouchY = 0;
+
+function deleteSelected() {
+  if (selectedBlocks.size === 0) return;
+  deletedCount += selectedBlocks.size;
+  selectClickCount = 0;
+  selectedBlocks.forEach(b => {
+    scene.remove(b);
+    blocks.splice(blocks.indexOf(b), 1);
+  });
+  setHover(null);
+  clearSelection();
+  if (deletedCount > 4 && blocks.length > 3) showHint(ctrlAHint);
+}
+
+function cancelLongPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+}
+
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+renderer.domElement.addEventListener('touchstart', e => {
+  if (mode !== 'select' || selectedBlocks.size === 0) return;
+  const touch = e.touches[0];
+  longPressTouchX = touch.clientX;
+  longPressTouchY = touch.clientY;
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    deleteSelected();
+  }, 600);
+}, { passive: true });
+
+renderer.domElement.addEventListener('touchmove', e => {
+  if (longPressTimer === null) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - longPressTouchX;
+  const dy = touch.clientY - longPressTouchY;
+  if (dx * dx + dy * dy > DRAG_THRESHOLD_SQ) cancelLongPress();
+}, { passive: true });
+
+renderer.domElement.addEventListener('touchend', cancelLongPress);
+renderer.domElement.addEventListener('touchcancel', cancelLongPress);
+
 renderer.domElement.addEventListener('mousedown', e => {
   mouseDownX = e.clientX;
   mouseDownY = e.clientY;
@@ -1016,7 +1063,7 @@ helpModal.innerHTML = `
       </div>
       <div class="help-col-shortcuts">
         <div class="help-section">
-          <h3>Keyboard Shortcuts</h3>
+          <h3>Shortcuts</h3>
           <div class="help-shortcuts">
             <span class="help-shortcut-key"><kbd>Space</kbd></span>
             <span class="help-shortcut-desc">Toggle Place / Select mode</span>
@@ -1026,7 +1073,7 @@ helpModal.innerHTML = `
             <span class="help-shortcut-desc">Add block to selection</span>
             <span class="help-shortcut-key"><kbd>Ctrl</kbd>+<kbd>A</kbd></span>
             <span class="help-shortcut-desc">Select all blocks</span>
-            <span class="help-shortcut-key"><kbd>Delete</kbd></span>
+            <span class="help-shortcut-key"><kbd>Delete</kbd> / Long-press</span>
             <span class="help-shortcut-desc">Delete selected blocks</span>
             <span class="help-shortcut-key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span>
             <span class="help-shortcut-desc">Pan camera</span>
@@ -1166,19 +1213,7 @@ window.addEventListener('keydown', e => {
       setMode('place');
     }
   }
-  if (e.key === 'Delete' && selectedBlocks.size > 0) {
-    deletedCount += selectedBlocks.size;
-    selectClickCount = 0;
-    selectedBlocks.forEach(b => {
-      scene.remove(b);
-      blocks.splice(blocks.indexOf(b), 1);
-    });
-    setHover(null);
-    clearSelection();
-    if (deletedCount > 4 && blocks.length > 3) {
-      showHint(ctrlAHint);
-    }
-  }
+  if (e.key === 'Delete') deleteSelected();
 });
 
 window.addEventListener('keyup', e => {
